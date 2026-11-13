@@ -19,446 +19,46 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useTasks } from '../../context/TaskContext';
 
-// Comprehensive mock tasks database consistent with Tasks.jsx and Dashboard.jsx
-const TASKS_DATABASE = [
-  {
-    id: 'RPT-2026-0104',
-    title: 'AC Bocor & Tidak Dingin di Lab Jaringan',
-    category: 'Electrical',
-    location: 'GK2 - Lantai 2, Lab Jaringan Komputer',
-    priority: 'Critical',
-    aiPriority: 'High',
-    status: 'In Progress',
-    reportedDate: '13 Nov 2026, 09:15',
-    reporterName: 'Bryan Sompotan (Mahasiswa - 105021234)',
-    description:
-      'Unit AC split meneteskan air ke meja praktikum dan kipas mengeluarkan suara berisik. Suhu ruangan meningkat drastis sehingga server lab berisiko overheat.',
-    damagePhoto:
-      'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=800&q=80',
-    evidencePhoto: null,
-    aiAnalysis: {
-      category: 'Electrical',
-      urgency: 'High',
-      summary: 'Kebocoran sistem pendingin AC berpotensi merusak perangkat lab komputer jika tidak ditangani segera.',
-      recommendation: 'Lakukan pembersihan filter, cek pembuangan kondensasi pipa, dan isi ulang refrigeran freon jika kompresor bekerja berat.',
-    },
-    updates: [
-      {
-        id: 'upd-1',
-        timestamp: '13 Nov 2026, 09:30',
-        author: 'Admin Sarana & Fasilitas',
-        status: 'Assigned',
-        notes: 'Laporan diverifikasi, prioritas dinaikkan menjadi Critical karena risiko terhadap server lab. Ditugaskan ke Rudi Hartono.',
-      },
-      {
-        id: 'upd-2',
-        timestamp: '13 Nov 2026, 10:15',
-        author: 'Rudi Hartono (Teknisi)',
-        status: 'In Progress',
-        notes: 'Mulai inspeksi unit indoor. Pipa pembuangan tersumbat debu tebal, sedang dilakukan flushing saluran kondensasi.',
-      },
-    ],
-  },
-  {
-    id: 'RPT-2026-0102',
-    title: 'Lampu Utama Ruang Kuliah 204 Padam',
-    category: 'Electrical',
-    location: 'GK1 - Lantai 2, Ruang Kuliah 204',
-    priority: 'High',
-    aiPriority: 'Medium',
-    status: 'Assigned',
-    reportedDate: '13 Nov 2026, 08:00',
-    reporterName: 'Dr. Jerry Rogi (Dosen - 091234567)',
-    description:
-      'Lampu tabung LED utama tidak menyala sama sekali saat sakelar dinyalakan. Ruangan gelap untuk sesi perkuliahan teori jam 10:00.',
-    damagePhoto: null,
-    evidencePhoto: null,
-    aiAnalysis: {
-      category: 'Electrical',
-      urgency: 'Medium',
-      summary: 'Kegagalan pencahayaan ruang kuliah mengganggu proses pembelajaran.',
-      recommendation: 'Periksa ballast, starter LED, serta terminal sakelar dinding.',
-    },
-    updates: [
-      {
-        id: 'upd-1',
-        timestamp: '13 Nov 2026, 08:15',
-        author: 'Admin Sarana & Fasilitas',
-        status: 'Assigned',
-        notes: 'Laporan disetujui. Prioritas High karena jadwal kuliah mendesak.',
-      },
-    ],
-  },
-  {
-    id: 'RPT-2026-0100',
-    title: 'Kipas Angin Dinding Berderit Kencang & Macet',
-    category: 'Electrical',
-    location: 'GK1 - Lantai 1, Ruang 105',
-    priority: 'Low',
-    aiPriority: 'Low',
-    status: 'Assigned',
-    reportedDate: '13 Nov 2026, 07:30',
-    reporterName: 'Staf Prodi Sistem Informasi',
-    description:
-      'Kipas angin dinding tidak bisa berputar osilasi dan mengeluarkan bunyi gesekan bearing kasar.',
-    damagePhoto: null,
-    evidencePhoto: null,
-    aiAnalysis: {
-      category: 'Electrical',
-      urgency: 'Low',
-      summary: 'Gangguan mekanis bearing kipas dinding.',
-      recommendation: 'Pelumasan bearing motor kipas atau penggantian gigi osilasi.',
-    },
-    updates: [
-      {
-        id: 'upd-1',
-        timestamp: '13 Nov 2026, 07:50',
-        author: 'Admin Sarana & Fasilitas',
-        status: 'Assigned',
-        notes: 'Tugas dimasukkan antrean penanganan pemeliharaan berkala.',
-      },
-    ],
-  },
-  {
-    id: 'RPT-2026-0099',
-    title: 'Kran Air Wastafel Patah di Musholla Kampus',
-    category: 'Plumbing',
-    location: 'Gedung Pioneer Chapel - Tempat Wudhu',
-    priority: 'Medium',
-    aiPriority: 'Medium',
-    status: 'Assigned',
-    reportedDate: '12 Nov 2026, 16:45',
-    reporterName: 'Rendy (Mahasiswa)',
-    description:
-      'Handle kran patah saat diputar, air menetes terus menerus sehingga valve utama sementara ditutup.',
-    damagePhoto:
-      'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80',
-    evidencePhoto: null,
-    aiAnalysis: {
-      category: 'Plumbing',
-      urgency: 'Medium',
-      summary: 'Kerusakan keran air mengakibatkan pemborosan air jika valve terbuka.',
-      recommendation: 'Penggantian bibcock keran kuningan 1/2 inch tipe putar.',
-    },
-    updates: [
-      {
-        id: 'upd-1',
-        timestamp: '12 Nov 2026, 17:00',
-        author: 'Admin Sarana & Fasilitas',
-        status: 'Assigned',
-        notes: 'Valve utama dimatikan sementara, teknisi ditugaskan untuk penggantian unit.',
-      },
-    ],
-  },
-  {
-    id: 'RPT-2026-0098',
-    title: 'Pipa Wastafel Bocor Menggenangi Lantai',
-    category: 'Plumbing',
-    location: 'Asrama Crystal - Toilet Lantai 1',
-    priority: 'High',
-    aiPriority: 'High',
-    status: 'In Progress',
-    reportedDate: '12 Nov 2026, 14:20',
-    reporterName: 'Maria Pangkey (Staf - 19850412)',
-    description:
-      'P-trap saluran pembuangan di bawah wastafel retak, air cucian langsung mengalir ke lantai lorong asrama.',
-    damagePhoto:
-      'https://images.unsplash.com/photo-1585704032915-c3400ca199e7?auto=format&fit=crop&w=800&q=80',
-    evidencePhoto: null,
-    aiAnalysis: {
-      category: 'Plumbing',
-      urgency: 'High',
-      summary: 'Kebocoran limbah air wastafel berisiko menimbulkan bau dan licin di lorong asrama.',
-      recommendation: 'Ganti P-trap fleksibel PVC dan lapisi sambungan ulir dengan seal tape.',
-    },
-    updates: [
-      {
-        id: 'upd-1',
-        timestamp: '12 Nov 2026, 14:40',
-        author: 'Admin Sarana & Fasilitas',
-        status: 'Assigned',
-        notes: 'Penugasan darurat untuk teknisi pipa.',
-      },
-      {
-        id: 'upd-2',
-        timestamp: '12 Nov 2026, 15:30',
-        author: 'Rudi Hartono (Teknisi)',
-        status: 'In Progress',
-        notes: 'Pipa lama dilepas, sedang memasang P-trap PVC baru dan pengolesan lem pipa.',
-      },
-    ],
-  },
-  {
-    id: 'RPT-2026-0097',
-    title: 'Koneksi Proyektor Plafon Sering Mati Mendadak',
-    category: 'Electronics',
-    location: 'GK2 - Lantai 3, Ruang Seminar',
-    priority: 'Medium',
-    aiPriority: 'Medium',
-    status: 'In Progress',
-    reportedDate: '12 Nov 2026, 13:10',
-    reporterName: 'Dosen FIK',
-    description:
-      'Kabel HDMI extender di plafon longgar atau kabel power intermittent, display proyektor sering hilang sinyal saat presentasi.',
-    damagePhoto: null,
-    evidencePhoto: null,
-    aiAnalysis: {
-      category: 'Electronics',
-      urgency: 'Medium',
-      summary: 'Intermittent signal connection pada kabel display proyektor.',
-      recommendation: 'Cek port HDMI projector ceiling bracket dan uji kabel HDMI 15 meter.',
-    },
-    updates: [
-      {
-        id: 'upd-1',
-        timestamp: '12 Nov 2026, 13:30',
-        author: 'Admin Sarana & Fasilitas',
-        status: 'Assigned',
-        notes: 'Diteruskan ke teknisi elektro untuk pengecekan kabel tangga plafon.',
-      },
-      {
-        id: 'upd-2',
-        timestamp: '12 Nov 2026, 16:00',
-        author: 'Rudi Hartono (Teknisi)',
-        status: 'In Progress',
-        notes: 'Tangga kerja dipasang, konektor HDMI dibersihkan dengan contact cleaner.',
-      },
-    ],
-  },
-  {
-    id: 'RPT-2026-0096',
-    title: 'Kunci Pintu Laboratorium Hardware Rusak',
-    category: 'Infrastructure',
-    location: 'GK2 - Lantai 1, Lab Hardware',
-    priority: 'Medium',
-    aiPriority: 'Medium',
-    status: 'In Progress',
-    reportedDate: '12 Nov 2026, 11:50',
-    reporterName: 'Koordinator Lab',
-    description:
-      'Silinder kunci pintu masuk macet dari luar, anak kunci tidak bisa diputar 360 derajat.',
-    damagePhoto: null,
-    evidencePhoto: null,
-    aiAnalysis: {
-      category: 'Infrastructure',
-      urgency: 'Medium',
-      summary: 'Kerusakan silinder kunci mekanis mengancam keamanan aset lab hardware.',
-      recommendation: 'Ganti silinder kunci pintu aluminium dengan kunci tipe master key.',
-    },
-    updates: [
-      {
-        id: 'upd-1',
-        timestamp: '12 Nov 2026, 12:15',
-        author: 'Admin Sarana & Fasilitas',
-        status: 'Assigned',
-        notes: 'Disetujui untuk penggantian silinder kunci.',
-      },
-      {
-        id: 'upd-2',
-        timestamp: '12 Nov 2026, 14:00',
-        author: 'Rudi Hartono (Teknisi)',
-        status: 'In Progress',
-        notes: 'Silinder lama dilepas, sedang menyesuaikan rumah kunci pintu aluminium.',
-      },
-    ],
-  },
-  {
-    id: 'RPT-2026-0095',
-    title: 'Stopkontak Meja Dosen Korslet & Berbau Hangus',
-    category: 'Electrical',
-    location: 'GK2 - Lantai 1, Ruang 102',
-    priority: 'Critical',
-    aiPriority: 'Critical',
-    status: 'Completed',
-    reportedDate: '12 Nov 2026, 10:45',
-    reporterName: 'Staf Administrasi FIK',
-    description:
-      'Terjadi korsleting saat laptop dihubungkan ke colokan. Stopkontak terbakar dan tercium bau plastik hangus.',
-    damagePhoto:
-      'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=800&q=80',
-    evidencePhoto:
-      'https://images.unsplash.com/photo-1544725176-7c40e5a71c5e?auto=format&fit=crop&w=800&q=80',
-    aiAnalysis: {
-      category: 'Electrical',
-      urgency: 'Critical',
-      summary: 'Korsleting listrik bertegangan tinggi berpotensi memicu kebakaran.',
-      recommendation: 'Putuskan MCB jalur terkait, isolasi kabel terbakar, ganti housing stopkontak in-bow.',
-    },
-    updates: [
-      {
-        id: 'upd-1',
-        timestamp: '12 Nov 2026, 10:55',
-        author: 'Admin Sarana & Fasilitas',
-        status: 'Assigned',
-        notes: 'MCB jalur 102 dimatikan sementara dari panel lantai 1.',
-      },
-      {
-        id: 'upd-2',
-        timestamp: '12 Nov 2026, 11:20',
-        author: 'Rudi Hartono (Teknisi)',
-        status: 'In Progress',
-        notes: 'Kabel fase dan netral yang meleleh dipotong dan disambung ulang dengan konektor wago.',
-      },
-      {
-        id: 'upd-3',
-        timestamp: '12 Nov 2026, 12:45',
-        author: 'Rudi Hartono (Teknisi)',
-        status: 'Completed',
-        notes: 'Stopkontak baru standar SNI telah terpasang rapi, tes beban 220V normal dan aman.',
-      },
-    ],
-  },
-  {
-    id: 'RPT-2026-0093',
-    title: 'Lampu Sorot Lapangan Basket UNKLAB Mati',
-    category: 'Electrical',
-    location: 'Sport Hall UNKLAB',
-    priority: 'Medium',
-    aiPriority: 'Low',
-    status: 'Completed',
-    reportedDate: '11 Nov 2026, 15:30',
-    reporterName: 'BEM UNKLAB',
-    description:
-      'Driver LED lampu sorot barat laut mati, sudah diganti ballast dan driver cadangan.',
-    damagePhoto: null,
-    evidencePhoto: null,
-    aiAnalysis: {
-      category: 'Electrical',
-      urgency: 'Low',
-      summary: 'Lampu sorot outdoor padam satu titik.',
-      recommendation: 'Penggantian modul driver switching 150 Watt.',
-    },
-    updates: [
-      {
-        id: 'upd-1',
-        timestamp: '11 Nov 2026, 16:00',
-        author: 'Admin Sarana & Fasilitas',
-        status: 'Assigned',
-        notes: 'Disetujui untuk perbaikan sebelum latihan basket malam.',
-      },
-      {
-        id: 'upd-2',
-        timestamp: '11 Nov 2026, 17:30',
-        author: 'Rudi Hartono (Teknisi)',
-        status: 'Completed',
-        notes: 'Penggantian driver LED selesai, penerangan lapangan normal.',
-      },
-    ],
-  },
-  {
-    id: 'RPT-2026-0092',
-    title: 'Saluran Air Pembuangan AC Tersumbat',
-    category: 'Plumbing',
-    location: 'GK1 - Ruang Dosen Lt. 3',
-    priority: 'Low',
-    aiPriority: 'Low',
-    status: 'Completed',
-    reportedDate: '11 Nov 2026, 13:00',
-    reporterName: 'Dosen FEB',
-    description:
-      'Pipa pembuangan AC berlumut, telah dilakukan flushing pipa dengan pompa tekanan tinggi.',
-    damagePhoto: null,
-    evidencePhoto: null,
-    aiAnalysis: {
-      category: 'Plumbing',
-      urgency: 'Low',
-      summary: 'Sumbatan lendir lumut pada pipa PVC pembuangan AC.',
-      recommendation: 'Flushing kimia ringan atau penyemprotan air bertekanan.',
-    },
-    updates: [
-      {
-        id: 'upd-1',
-        timestamp: '11 Nov 2026, 14:00',
-        author: 'Rudi Hartono (Teknisi)',
-        status: 'Completed',
-        notes: 'Saluran bersih, aliran air lancar ke luar gedung.',
-      },
-    ],
-  },
-  {
-    id: 'RPT-2026-0091',
-    title: 'Pintu Ruang Baca Engsel Longgar & Rusak',
-    category: 'Furniture',
-    location: 'Perpustakaan Pusat - Lantai 2',
-    priority: 'Medium',
-    aiPriority: 'Medium',
-    status: 'Completed',
-    reportedDate: '11 Nov 2026, 11:30',
-    reporterName: 'Petugas Perpustakaan',
-    description:
-      'Engsel atas kendor sehingga daun pintu menggesek lantai parquet. Sudah disekrup ulang dan diberi pelumas.',
-    damagePhoto: null,
-    evidencePhoto: null,
-    aiAnalysis: {
-      category: 'Furniture',
-      urgency: 'Medium',
-      summary: 'Kelemahan sekrup pada kusen kayu ruang baca.',
-      recommendation: 'Pemasangan fischer kayu baru dan sekrup lebih panjang.',
-    },
-    updates: [
-      {
-        id: 'upd-1',
-        timestamp: '11 Nov 2026, 13:00',
-        author: 'Rudi Hartono (Teknisi)',
-        status: 'Completed',
-        notes: 'Pintu kembali presisi dan dapat ditutup tanpa bergesekan.',
-      },
-    ],
-  },
-  {
-    id: 'RPT-2026-0089',
-    title: 'Kabel LAN Meja Front Desk Perpustakaan Putus',
-    category: 'Infrastructure',
-    location: 'Perpustakaan Pusat - Lantai 1',
-    priority: 'Low',
-    aiPriority: 'Low',
-    status: 'Completed',
-    reportedDate: '10 Nov 2026, 09:20',
-    reporterName: 'Staf Perpustakaan',
-    description:
-      'Kabel patch cord UTP terjepit laci meja. Sudah dilakukan crimping ulang konektor RJ-45 baru.',
-    damagePhoto: null,
-    evidencePhoto: null,
-    aiAnalysis: {
-      category: 'Infrastructure',
-      urgency: 'Low',
-      summary: 'Konektor RJ45 patah akibat terjepit.',
-      recommendation: 'Crimping ulang dengan konektor Cat6 baru dan tes LAN cable tester.',
-    },
-    updates: [
-      {
-        id: 'upd-1',
-        timestamp: '10 Nov 2026, 10:15',
-        author: 'Rudi Hartono (Teknisi)',
-        status: 'Completed',
-        notes: 'Crimping selesai, kecepatan jaringan terdeteksi 1 Gbps normal.',
-      },
-    ],
-  },
-];
+function createUpdateRecord(authorName, status, notes) {
+  const now = new Date();
+  const formattedDate = `${now.getDate()} Nov 2026, ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const dayString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return {
+    id: `upd-${Date.now().toString(36)}`,
+    timestamp: formattedDate,
+    dayString,
+    author: `${authorName || 'Rudi Hartono'} (Teknisi)`,
+    status,
+    notes,
+  };
+}
 
 export default function TechnicianTaskDetail() {
   const { id } = useParams();
   const { user } = useAuth();
+  const { getTaskById, updateTask } = useTasks();
 
-  // Find task from mock database
-  const initialTask = TASKS_DATABASE.find(
-    (t) => t.id.toLowerCase() === id?.toLowerCase()
-  );
+  const task = getTaskById(id);
 
-  // Local state for interactive technician updates (simulated in-memory)
-  const [task, setTask] = useState(initialTask || null);
-  const [status, setStatus] = useState(initialTask?.status || 'In Progress');
+  // Form states initialized with task properties
+  const [prevId, setPrevId] = useState(task?.id);
+  const [status, setStatus] = useState(task?.status || 'In Progress');
   const [repairNotes, setRepairNotes] = useState('');
   const [evidenceFile, setEvidenceFile] = useState(null);
-  const [evidencePreview, setEvidencePreview] = useState(
-    initialTask?.evidencePhoto || null
-  );
+  const [evidencePreview, setEvidencePreview] = useState(task?.evidencePhoto || null);
 
   // Form feedback messages (Toast state)
   const [feedback, setFeedback] = useState({ type: '', message: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Reset form state when viewing a different task ID
+  if (task && task.id !== prevId) {
+    setPrevId(task.id);
+    setStatus(task.status);
+    setEvidencePreview(task.evidencePhoto || null);
+  }
 
   // Auto-dismiss toast after 3.5 seconds
   useEffect(() => {
@@ -552,8 +152,8 @@ export default function TechnicianTaskDetail() {
     setFeedback({ type: '', message: '' });
   };
 
-  // Submit status update and notes
-  const handleUpdateSubmit = (e) => {
+  // Submit status update and notes via TaskContext
+  const handleUpdateSubmit = async (e) => {
     e.preventDefault();
     setFeedback({ type: '', message: '' });
 
@@ -575,33 +175,48 @@ export default function TechnicianTaskDetail() {
 
     setIsSubmitting(true);
 
-    // Simulate update operation in memory
-    setTimeout(() => {
-      const now = new Date();
-      const formattedDate = `${now.getDate()} Nov 2026, ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    try {
+      const record = createUpdateRecord(user?.name, status, repairNotes.trim());
 
       const newUpdate = {
-        id: `upd-${Date.now().toString(36)}`,
-        timestamp: formattedDate,
-        author: `${user?.name || 'Rudi Hartono'} (Teknisi)`,
-        status: status,
-        notes: repairNotes.trim(),
+        id: record.id,
+        timestamp: record.timestamp,
+        author: record.author,
+        status: record.status,
+        notes: record.notes,
       };
 
-      setTask((prev) => ({
-        ...prev,
+      await updateTask(task.id, {
         status: status,
+        repairNotes: repairNotes.trim(),
         evidencePhoto: evidencePreview,
-        updates: [newUpdate, ...(prev.updates || [])],
-      }));
+        ...(status === 'Completed'
+          ? {
+              completedDate: record.timestamp,
+              completionDay: record.dayString,
+              duration: '1 jam',
+            }
+          : {}),
+        newUpdate,
+      });
 
       setIsSubmitting(false);
       setRepairNotes('');
       setFeedback({
         type: 'success',
-        message: `Status berhasil diperbarui menjadi "${status}" dan catatan perbaikan telah disimpan (simulasi local state).`,
+        message:
+          status === 'Completed'
+            ? 'Pekerjaan berhasil diselesaikan! Tugas kini tercatat di Riwayat Perbaikan.'
+            : 'Pembaruan tugas berhasil disimpan dan riwayat aktivitas diperbarui.',
       });
-    }, 400);
+    } catch (err) {
+      console.error(err);
+      setIsSubmitting(false);
+      setFeedback({
+        type: 'error',
+        message: 'Terjadi kesalahan saat menyimpan pembaruan tugas. Silakan coba lagi.',
+      });
+    }
   };
 
   // Priority Badge Renderer
@@ -1065,7 +680,7 @@ export default function TechnicianTaskDetail() {
             </form>
 
             <p className="text-[10px] text-slate-400 text-center mt-3">
-              *Pembaruan disimpan dalam sesi lokal aktif (prototipe).
+              *Pembaruan tersimpan secara reaktif melalui TaskContext & localStorage.
             </p>
           </div>
         </div>

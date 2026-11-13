@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Wrench,
@@ -13,123 +14,55 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-
-// Temporary local mock data for Technician Dashboard
-const STATS_DATA = {
-  totalTasks: 12,
-  pendingTasks: 3, // Menunggu dikerjakan (Assigned)
-  inProgressTasks: 4, // Sedang dikerjakan
-  completedTasks: 5, // Selesai
-};
-
-const RECENT_TASKS = [
-  {
-    id: 'RPT-2026-0104',
-    title: 'AC Bocor & Tidak Dingin di Lab Jaringan',
-    category: 'Electrical',
-    location: 'GK2 - Lantai 2, Lab Jaringan Komputer',
-    priority: 'Critical',
-    status: 'In Progress',
-    reportedDate: '13 Nov 2026, 09:15',
-    reporterName: 'Bryan Sompotan (Mahasiswa)',
-    urgencyReason: 'Suhu lab tinggi, berisiko merusak server praktikum.',
-  },
-  {
-    id: 'RPT-2026-0102',
-    title: 'Lampu Utama Ruang Kuliah 204 Padam',
-    category: 'Electrical',
-    location: 'GK1 - Lantai 2, Ruang Kuliah 204',
-    priority: 'High',
-    status: 'Assigned',
-    reportedDate: '13 Nov 2026, 08:00',
-    reporterName: 'Dr. Jerry Rogi (Dosen)',
-    urgencyReason: 'Ruangan digunakan untuk perkuliahan siang.',
-  },
-  {
-    id: 'RPT-2026-0098',
-    title: 'Pipa Wastafel Bocor Menggenangi Lantai',
-    category: 'Plumbing',
-    location: 'Asrama Crystal - Toilet Lantai 1',
-    priority: 'High',
-    status: 'In Progress',
-    reportedDate: '12 Nov 2026, 14:20',
-    reporterName: 'Maria Pangkey (Staf)',
-    urgencyReason: 'Air meluap ke koridor asrama.',
-  },
-  {
-    id: 'RPT-2026-0095',
-    title: 'Stopkontak Meja Dosen Korslet & Berbau Hangus',
-    category: 'Electrical',
-    location: 'GK2 - Lantai 1, Ruang 102',
-    priority: 'Critical',
-    status: 'Completed',
-    reportedDate: '12 Nov 2026, 10:45',
-    reporterName: 'Staf Administrasi FIK',
-    urgencyReason: 'Bahaya percikan listrik telah ditangani.',
-  },
-  {
-    id: 'RPT-2026-0091',
-    title: 'Pintu Ruang Baca Engsel Longgar & Rusak',
-    category: 'Furniture',
-    location: 'Perpustakaan Pusat - Lantai 2',
-    priority: 'Medium',
-    status: 'Completed',
-    reportedDate: '11 Nov 2026, 11:30',
-    reporterName: 'Petugas Perpustakaan',
-    urgencyReason: 'Pintu telah diperbaiki dan dapat dikunci normal.',
-  },
-];
-
-const RECENT_ACTIVITIES = [
-  {
-    id: 'act-1',
-    taskId: 'RPT-2026-0104',
-    title: 'Pembersihan Filter & Perbaikan Pipa Pembuangan AC',
-    action: 'Memperbarui status pengerjaan',
-    newStatus: 'In Progress',
-    timestamp: '35 menit yang lalu',
-    notes: 'Sedang memeriksa kompresor outdoor di balkon GK2.',
-  },
-  {
-    id: 'act-2',
-    taskId: 'RPT-2026-0095',
-    title: 'Penggantian Sakelar & Kabel Stopkontak Meja Dosen',
-    action: 'Menyelesaikan perbaikan & upload bukti foto',
-    newStatus: 'Completed',
-    timestamp: '3 jam yang lalu',
-    notes: 'Stopkontak diganti tipe standar SNI baru, tegangan stabil 220V.',
-  },
-  {
-    id: 'act-3',
-    taskId: 'RPT-2026-0102',
-    title: 'Tugas Baru Diterima dari Admin Fasilitas',
-    action: 'Penugasan diterima',
-    newStatus: 'Assigned',
-    timestamp: '5 jam yang lalu',
-    notes: 'Dijadwalkan inspeksi penggantian bohlam LED siang ini.',
-  },
-  {
-    id: 'act-4',
-    taskId: 'RPT-2026-0098',
-    title: 'Penutupan Valve Saluran Air & Penggantian P-Trap',
-    action: 'Memperbarui progres perbaikan',
-    newStatus: 'In Progress',
-    timestamp: 'Kemarin, 16:30',
-    notes: 'Menunggu pengeringan lem sealant sebelum uji aliran air.',
-  },
-  {
-    id: 'act-5',
-    taskId: 'RPT-2026-0091',
-    title: 'Pergantian Engsel Pintu Ruang Baca',
-    action: 'Tugas selesai',
-    newStatus: 'Completed',
-    timestamp: 'Kemarin, 13:15',
-    notes: 'Engsel diperkuat dengan sekrup baja galvanis.',
-  },
-];
+import { useTasks } from '../../context/TaskContext';
 
 export default function TechnicianDashboard() {
   const { user } = useAuth();
+  const { tasks } = useTasks();
+
+  // Dynamic statistics calculated from TaskContext
+  const stats = useMemo(() => {
+    return {
+      totalTasks: tasks.length,
+      pendingTasks: tasks.filter((t) => t.status === 'Assigned').length,
+      inProgressTasks: tasks.filter((t) => t.status === 'In Progress').length,
+      completedTasks: tasks.filter((t) => t.status === 'Completed').length,
+    };
+  }, [tasks]);
+
+  // Find any active critical task
+  const criticalTask = useMemo(() => {
+    return tasks.find((t) => t.priority === 'Critical' && t.status !== 'Completed');
+  }, [tasks]);
+
+  // Derived 5 recent tasks
+  const recentTasks = useMemo(() => {
+    return [...tasks].slice(0, 5);
+  }, [tasks]);
+
+  // Derived recent activity feed from task update history
+  const recentActivities = useMemo(() => {
+    const list = [];
+    tasks.forEach((t) => {
+      (t.updates || []).forEach((u) => {
+        list.push({
+          id: u.id || `${t.id}-${u.timestamp}`,
+          taskId: t.id,
+          title: t.title,
+          action:
+            u.status === 'Completed'
+              ? 'Menyelesaikan perbaikan & upload bukti foto'
+              : u.status === 'In Progress'
+              ? 'Memperbarui status pengerjaan'
+              : 'Penugasan diterima',
+          newStatus: u.status,
+          timestamp: u.timestamp,
+          notes: u.notes,
+        });
+      });
+    });
+    return list.slice(0, 5);
+  }, [tasks]);
 
   // Helper for priority badges
   const getPriorityBadge = (priority) => {
@@ -225,23 +158,25 @@ export default function TechnicianDashboard() {
       </div>
 
       {/* Critical Task Alert Banner (if any critical tasks in progress/assigned) */}
-      <div className="bg-rose-50 border-l-4 border-rose-500 p-4 rounded-xl flex items-start justify-between gap-3 shadow-sm">
-        <div className="flex items-start space-x-3">
-          <ShieldAlert className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-xs font-bold text-rose-900">Perhatian: Ada 1 Tugas Prioritas Kritis (Critical)</p>
-            <p className="text-xs text-rose-700 mt-0.5">
-              RPT-2026-0104: AC Bocor di Lab Jaringan Komputer GK2 memerlukan penanganan segera untuk mencegah kerusakan perangkat server.
-            </p>
+      {criticalTask && (
+        <div className="bg-rose-50 border-l-4 border-rose-500 p-4 rounded-xl flex items-start justify-between gap-3 shadow-sm">
+          <div className="flex items-start space-x-3">
+            <ShieldAlert className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-bold text-rose-900">Perhatian: Ada Tugas Prioritas Kritis (Critical)</p>
+              <p className="text-xs text-rose-700 mt-0.5">
+                {criticalTask.id}: {criticalTask.title} di {criticalTask.location} memerlukan penanganan segera untuk mencegah kerusakan fatal.
+              </p>
+            </div>
           </div>
+          <Link
+            to={`/technician/tasks/${criticalTask.id}`}
+            className="text-xs font-bold text-rose-800 hover:text-rose-950 underline shrink-0 mt-0.5"
+          >
+            Tangani Sekarang
+          </Link>
         </div>
-        <Link
-          to="/technician/tasks"
-          className="text-xs font-bold text-rose-800 hover:text-rose-950 underline shrink-0 mt-0.5"
-        >
-          Tangani Sekarang
-        </Link>
-      </div>
+      )}
 
       {/* 4 Key Statistics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
@@ -257,7 +192,7 @@ export default function TechnicianDashboard() {
           </div>
           <div className="mt-3 flex items-baseline space-x-2">
             <span className="text-3xl font-extrabold text-slate-900">
-              {STATS_DATA.totalTasks}
+              {stats.totalTasks}
             </span>
             <span className="text-xs text-slate-500">laporan ditugaskan</span>
           </div>
@@ -276,7 +211,7 @@ export default function TechnicianDashboard() {
           </div>
           <div className="mt-3 flex items-baseline space-x-2">
             <span className="text-3xl font-extrabold text-sky-900">
-              {STATS_DATA.pendingTasks}
+              {stats.pendingTasks}
             </span>
             <span className="text-xs text-sky-600 font-medium">status Assigned</span>
           </div>
@@ -295,7 +230,7 @@ export default function TechnicianDashboard() {
           </div>
           <div className="mt-3 flex items-baseline space-x-2">
             <span className="text-3xl font-extrabold text-indigo-900">
-              {STATS_DATA.inProgressTasks}
+              {stats.inProgressTasks}
             </span>
             <span className="text-xs text-indigo-600 font-medium">In Progress</span>
           </div>
@@ -314,7 +249,7 @@ export default function TechnicianDashboard() {
           </div>
           <div className="mt-3 flex items-baseline space-x-2">
             <span className="text-3xl font-extrabold text-emerald-900">
-              {STATS_DATA.completedTasks}
+              {stats.completedTasks}
             </span>
             <span className="text-xs text-emerald-600 font-medium">Completed</span>
           </div>
@@ -343,10 +278,11 @@ export default function TechnicianDashboard() {
           </div>
 
           <div className="space-y-3.5">
-            {RECENT_TASKS.map((task) => (
-              <div
+            {recentTasks.map((task) => (
+              <Link
                 key={task.id}
-                className="p-4 rounded-xl border border-slate-200/80 hover:border-indigo-300 hover:shadow-sm bg-slate-50/40 hover:bg-white transition-all group"
+                to={`/technician/tasks/${task.id}`}
+                className="block p-4 rounded-xl border border-slate-200/80 hover:border-indigo-300 hover:shadow-sm bg-slate-50/40 hover:bg-white transition-all group"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
                   <div className="flex items-center space-x-2">
@@ -381,7 +317,7 @@ export default function TechnicianDashboard() {
                     Pelapor: {task.reporterName}
                   </span>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
 
@@ -407,10 +343,10 @@ export default function TechnicianDashboard() {
           </div>
 
           <div className="flex-1 space-y-4">
-            {RECENT_ACTIVITIES.map((act, idx) => (
+            {recentActivities.map((act, idx) => (
               <div key={act.id} className="relative pl-6 pb-4 last:pb-0">
                 {/* Timeline vertical line */}
-                {idx !== RECENT_ACTIVITIES.length - 1 && (
+                {idx !== recentActivities.length - 1 && (
                   <span
                     className="absolute left-2.5 top-5 -bottom-1 w-0.5 bg-slate-200"
                     aria-hidden="true"
@@ -456,4 +392,3 @@ export default function TechnicianDashboard() {
     </div>
   );
 }
-

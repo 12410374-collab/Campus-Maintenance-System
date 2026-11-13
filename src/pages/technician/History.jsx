@@ -15,104 +15,37 @@ import {
   Clock,
   Sparkles,
 } from 'lucide-react';
-
-// Mock completed repairs dataset consistent with Tasks.jsx and TaskDetail.jsx
-const COMPLETED_REPAIRS = [
-  {
-    id: 'RPT-2026-0095',
-    title: 'Stopkontak Meja Dosen Korslet & Berbau Hangus',
-    category: 'Electrical',
-    location: 'GK2 - Lantai 1, Ruang 102',
-    priority: 'Critical',
-    status: 'Completed',
-    reportedDate: '12 Nov 2026, 10:45',
-    completedDate: '12 Nov 2026, 12:45',
-    completionDay: '2026-11-12',
-    reporterName: 'Staf Administrasi FIK',
-    repairNotes: 'Stopkontak baru standar SNI telah terpasang rapi, pengkabelan diganti dengan kabel tembaga 2.5mm, tes beban 220V normal dan aman.',
-    evidencePhoto: 'https://images.unsplash.com/photo-1529111316-da2e2a1e625d?auto=format&fit=crop&w=800&q=80',
-    duration: '2 jam',
-  },
-  {
-    id: 'RPT-2026-0093',
-    title: 'Lampu Sorot Lapangan Basket UNKLAB Mati',
-    category: 'Electrical',
-    location: 'Sport Hall UNKLAB',
-    priority: 'Medium',
-    status: 'Completed',
-    reportedDate: '11 Nov 2026, 15:30',
-    completedDate: '11 Nov 2026, 17:30',
-    completionDay: '2026-11-11',
-    reporterName: 'BEM UNKLAB',
-    repairNotes: 'Driver LED lampu sorot barat laut mati akibat lonjakan arus, sudah diganti dengan unit ballast driver 150W cadangan.',
-    evidencePhoto: null,
-    duration: '2 jam',
-  },
-  {
-    id: 'RPT-2026-0092',
-    title: 'Saluran Air Pembuangan AC Tersumbat',
-    category: 'Plumbing',
-    location: 'GK1 - Ruang Dosen Lt. 3',
-    priority: 'Low',
-    status: 'Completed',
-    reportedDate: '11 Nov 2026, 13:00',
-    completedDate: '11 Nov 2026, 14:00',
-    completionDay: '2026-11-11',
-    reporterName: 'Dosen FEB',
-    repairNotes: 'Pipa pembuangan AC berlumut tebal, dilakukan flushing pipa dengan pompa air tekanan tinggi dan pemberian cairan anti-lumut.',
-    evidencePhoto: null,
-    duration: '1 jam',
-  },
-  {
-    id: 'RPT-2026-0091',
-    title: 'Pintu Ruang Baca Engsel Longgar & Rusak',
-    category: 'Furniture',
-    location: 'Perpustakaan Pusat - Lantai 2',
-    priority: 'Medium',
-    status: 'Completed',
-    reportedDate: '11 Nov 2026, 11:30',
-    completedDate: '11 Nov 2026, 13:00',
-    completionDay: '2026-11-11',
-    reporterName: 'Petugas Perpustakaan',
-    repairNotes: 'Engsel atas kusen kayu diperbaiki dengan fischer baru dan sekrup baja galvanis lebih panjang. Pintu dapat ditutup tanpa bergesekan.',
-    evidencePhoto: null,
-    duration: '1.5 jam',
-  },
-  {
-    id: 'RPT-2026-0089',
-    title: 'Kabel LAN Meja Front Desk Perpustakaan Putus',
-    category: 'Infrastructure',
-    location: 'Perpustakaan Pusat - Lantai 1',
-    priority: 'Low',
-    status: 'Completed',
-    reportedDate: '10 Nov 2026, 09:20',
-    completedDate: '10 Nov 2026, 10:15',
-    completionDay: '2026-11-10',
-    reporterName: 'Staf Perpustakaan',
-    repairNotes: 'Kabel patch cord UTP terjepit laci meja. Dilakukan pemotongan bagian rusak dan crimping ulang konektor RJ-45 Cat6 baru.',
-    evidencePhoto: null,
-    duration: '55 menit',
-  },
-];
+import { useTasks } from '../../context/TaskContext';
 
 export default function TechnicianHistory() {
+  const { completedTasks } = useTasks();
+
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedDate, setSelectedDate] = useState('ALL');
   const [selectedImageModal, setSelectedImageModal] = useState(null);
 
+  // Dynamically extract unique completion dates from completed tasks
+  const availableDates = useMemo(() => {
+    const dates = new Set();
+    completedTasks.forEach((item) => {
+      if (item.completionDay) dates.add(item.completionDay);
+    });
+    return Array.from(dates).sort().reverse();
+  }, [completedTasks]);
+
   // Filter calculation
   const filteredRepairs = useMemo(() => {
-    return COMPLETED_REPAIRS.filter((item) => {
+    return completedTasks.filter((item) => {
       const query = searchQuery.toLowerCase().trim();
       const matchesSearch =
         !query ||
         item.id.toLowerCase().includes(query) ||
         item.title.toLowerCase().includes(query) ||
         item.location.toLowerCase().includes(query) ||
-        item.reporterName.toLowerCase().includes(query) ||
-        item.repairNotes.toLowerCase().includes(query);
+        (item.reporterName && item.reporterName.toLowerCase().includes(query)) ||
+        (item.repairNotes && item.repairNotes.toLowerCase().includes(query));
 
       const matchesCategory =
         selectedCategory === 'ALL' || item.category === selectedCategory;
@@ -122,7 +55,7 @@ export default function TechnicianHistory() {
 
       return matchesSearch && matchesCategory && matchesDate;
     });
-  }, [searchQuery, selectedCategory, selectedDate]);
+  }, [completedTasks, searchQuery, selectedCategory, selectedDate]);
 
   // Priority Badge Renderer
   const renderPriorityBadge = (priority) => {
@@ -186,7 +119,7 @@ export default function TechnicianHistory() {
 
         <div className="flex items-center space-x-2 text-xs text-slate-600 bg-white px-3.5 py-2.5 rounded-xl border border-slate-200 shadow-sm shrink-0">
           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-          <span>Total Selesai: <strong>{COMPLETED_REPAIRS.length}</strong> pekerjaan</span>
+          <span>Total Selesai: <strong>{completedTasks.length}</strong> pekerjaan</span>
         </div>
       </div>
 
@@ -198,7 +131,7 @@ export default function TechnicianHistory() {
           </div>
           <div>
             <p className="text-xs font-semibold uppercase text-slate-400">Total Tugas Selesai</p>
-            <p className="text-lg font-bold text-slate-900">{COMPLETED_REPAIRS.length} Tugas</p>
+            <p className="text-lg font-bold text-slate-900">{completedTasks.length} Tugas</p>
           </div>
         </div>
 
@@ -209,7 +142,7 @@ export default function TechnicianHistory() {
           <div>
             <p className="text-xs font-semibold uppercase text-slate-400">Dengan Bukti Foto</p>
             <p className="text-lg font-bold text-slate-900">
-              {COMPLETED_REPAIRS.filter((r) => r.evidencePhoto).length} Pekerjaan
+              {completedTasks.filter((r) => r.evidencePhoto).length} Pekerjaan
             </p>
           </div>
         </div>
@@ -282,9 +215,22 @@ export default function TechnicianHistory() {
                 className="pl-9 pr-8 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer transition-all"
               >
                 <option value="ALL">Semua Tanggal</option>
-                <option value="2026-11-12">12 Nov 2026</option>
-                <option value="2026-11-11">11 Nov 2026</option>
-                <option value="2026-11-10">10 Nov 2026</option>
+                {availableDates.map((dateStr) => {
+                  const parts = dateStr.split('-');
+                  const monthNames = [
+                    'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+                    'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
+                  ];
+                  const label =
+                    parts.length === 3
+                      ? `${parseInt(parts[2], 10)} ${monthNames[parseInt(parts[1], 10) - 1]} ${parts[0]}`
+                      : dateStr;
+                  return (
+                    <option key={dateStr} value={dateStr}>
+                      {label}
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
@@ -370,7 +316,7 @@ export default function TechnicianHistory() {
                       <span>Catatan Pengerjaan Teknisi:</span>
                     </p>
                     <p className="italic text-slate-600 leading-relaxed">
-                      "{item.repairNotes}"
+                      "{item.repairNotes || 'Tidak ada catatan pengerjaan tambahan.'}"
                     </p>
                   </div>
 
@@ -378,11 +324,11 @@ export default function TechnicianHistory() {
                   <div className="flex flex-wrap items-center gap-y-1 gap-x-4 pt-1 text-xs text-slate-400">
                     <span className="flex items-center space-x-1 text-slate-500">
                       <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Selesai: <strong className="text-slate-700">{item.completedDate}</strong></span>
+                      <span>Selesai: <strong className="text-slate-700">{item.completedDate || '-'}</strong></span>
                     </span>
                     <span className="flex items-center space-x-1 text-slate-500">
                       <Clock className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Durasi pengerjaan: {item.duration}</span>
+                      <span>Durasi pengerjaan: {item.duration || '-'}</span>
                     </span>
                     <span>Pelapor: {item.reporterName}</span>
                   </div>
@@ -467,4 +413,3 @@ export default function TechnicianHistory() {
     </div>
   );
 }
-

@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { TaskProvider } from './context/TaskContext';
 import Login from './pages/auth/Login';
 import DashboardLayout from './components/DashboardLayout';
 import ProtectedRoute, { getRoleHomePath } from './routes/ProtectedRoute';
@@ -73,7 +74,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
+        <TaskProvider>
+          <Routes>
           {/* Root redirect */}
           <Route path="/" element={<RootRedirect />} />
 
@@ -186,6 +188,7 @@ export default function App() {
           {/* Catch-all Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </TaskProvider>
       </AuthProvider>
     </BrowserRouter>
   );
