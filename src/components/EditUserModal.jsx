@@ -5,7 +5,13 @@ export default function EditUserModal({ user, onClose }) {
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
 
-  
+  async function saveData() {
+    await fetch(`http://localhost:3001/users/${user.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email }),
+    });
+  }
 
   // 3. Tampilkan modal berisi form edit
   return (
@@ -26,7 +32,7 @@ export default function EditUserModal({ user, onClose }) {
         </div>
 
         {/* Form */}
-        <form  className="space-y-4">
+        <form onSubmit ={() => saveDate ()} className="space-y-4">
           <div>
             <label
               htmlFor="edit-name"

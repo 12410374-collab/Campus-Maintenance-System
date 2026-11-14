@@ -31,6 +31,11 @@
       "name": "Enrico Djimesha",
       "email": "enrico.djimesha@unklab.ac.id",
       "id": "wOY39SqT5Ys"
+    },
+    {
+      "name": "brian ganteng ",
+      "email": "briansayangku@gmail",
+      "id": "Y5mX3xypcBc"
     }
   ],
   "$schema": "./node_modules/json-server/schema.json"
