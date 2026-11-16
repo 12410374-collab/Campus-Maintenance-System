@@ -22,7 +22,7 @@ import { useAuth } from '../../context/AuthContext';
 export default function Sidebar({ isOpen, onClose }) {
   const { user, role, logout } = useAuth();
 
-  // Navigation menu configurations per role as specified in PROJECT_CONTEXT.md
+  // Navigation menu configurations per role
   const getNavItems = () => {
     switch (role) {
       case 'Technician':
@@ -114,37 +114,42 @@ export default function Sidebar({ isOpen, onClose }) {
 
   const navItems = getNavItems();
 
-  // Visual helper for role badge
+  // Visual helper for role badge on dark navy surface
   const getRoleBadgeStyle = () => {
     switch (role) {
       case 'Technician':
         return {
-          bg: 'bg-indigo-50 border-indigo-200 text-indigo-700',
+          bg: 'bg-indigo-500/15 border-indigo-400/30 text-indigo-200',
+          iconColor: 'text-indigo-300',
           icon: Wrench,
           label: 'Teknisi',
         };
       case 'Admin':
         return {
-          bg: 'bg-purple-50 border-purple-200 text-purple-700',
+          bg: 'bg-purple-500/15 border-purple-400/30 text-purple-200',
+          iconColor: 'text-purple-300',
           icon: ShieldCheck,
           label: 'Admin',
         };
       case 'Lecturer':
         return {
-          bg: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+          bg: 'bg-emerald-500/15 border-emerald-400/30 text-emerald-200',
+          iconColor: 'text-emerald-300',
           icon: BookOpen,
           label: 'Dosen',
         };
       case 'Staff':
         return {
-          bg: 'bg-amber-50 border-amber-200 text-amber-700',
+          bg: 'bg-amber-500/15 border-amber-400/30 text-amber-200',
+          iconColor: 'text-amber-300',
           icon: Briefcase,
           label: 'Staf',
         };
       case 'Student':
       default:
         return {
-          bg: 'bg-blue-50 border-blue-200 text-blue-700',
+          bg: 'bg-blue-500/15 border-blue-400/30 text-blue-200',
+          iconColor: 'text-blue-300',
           icon: GraduationCap,
           label: 'Mahasiswa',
         };
@@ -159,29 +164,39 @@ export default function Sidebar({ isOpen, onClose }) {
       {/* Mobile Backdrop Overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm lg:hidden transition-opacity"
+          className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-sm lg:hidden transition-opacity"
           onClick={onClose}
           aria-hidden="true"
         />
       )}
 
-      {/* Sidebar Container */}
+      {/* Dark Navy Premium Sidebar Container (Full 100dvh fixed sidebar on desktop + drawer on mobile) */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 w-72 bg-white border-r border-slate-200 flex flex-col transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 w-72 h-dvh bg-gradient-to-b from-[#070C1B] via-[#0B1228] to-[#101032] border-r border-white/10 text-slate-200 flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 overflow-hidden ${
           isOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
         }`}
       >
+        {/* Subtle decorative ambient glow inside sidebar */}
+        <div
+          className="absolute -top-20 -left-16 w-56 h-56 rounded-full bg-indigo-600/15 blur-3xl pointer-events-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute bottom-10 -right-16 w-48 h-48 rounded-full bg-purple-600/10 blur-3xl pointer-events-none"
+          aria-hidden="true"
+        />
+
         {/* Brand Header */}
-        <div className="h-18 px-5 border-b border-slate-100 flex items-center justify-between">
+        <div className="relative z-10 h-18 px-5 border-b border-white/10 flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/25">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/30 border border-white/15">
               <Building2 className="w-5 h-5" />
             </div>
             <div className="leading-tight">
-              <h1 className="text-sm font-bold text-slate-900 tracking-tight">
+              <h1 className="text-sm font-extrabold text-white tracking-tight">
                 Campus Maintenance
               </h1>
-              <p className="text-[11px] text-indigo-600 font-semibold">
+              <p className="text-[11px] text-indigo-300 font-semibold">
                 Universitas Klabat
               </p>
             </div>
@@ -191,32 +206,32 @@ export default function Sidebar({ isOpen, onClose }) {
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 lg:hidden cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 lg:hidden cursor-pointer transition-colors"
             aria-label="Tutup navigasi"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Current Role Indicator */}
-        <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/60">
+        {/* Active Role Indicator */}
+        <div className="relative z-10 px-5 py-3.5 border-b border-white/10 bg-white/[0.02] shrink-0">
           <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1.5">
             Peran Aktif
           </p>
           <div
-            className={`inline-flex items-center space-x-2 px-2.5 py-1 rounded-lg text-xs font-semibold border ${roleBadge.bg}`}
+            className={`inline-flex items-center space-x-2 px-2.5 py-1 rounded-lg text-xs font-semibold border backdrop-blur-sm ${roleBadge.bg}`}
           >
-            <RoleIcon className="w-3.5 h-3.5" />
-            <span>{role || 'Pengguna'}</span>
-            <span className="text-[10px] opacity-75 font-normal">
-              ({roleBadge.label})
+            <RoleIcon className={`w-3.5 h-3.5 ${roleBadge.iconColor}`} />
+            <span>{roleBadge.label}</span>
+            <span className="text-[10px] opacity-65 font-normal">
+              ({role || 'Pengguna'})
             </span>
           </div>
         </div>
 
         {/* Navigation Menu */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          <p className="px-3 text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-2">
+        <nav className="relative z-10 flex-1 min-h-0 px-3.5 py-5 space-y-1.5 overflow-y-auto">
+          <p className="px-3 text-[10px] uppercase font-bold tracking-wider text-slate-400/80 mb-2.5">
             Menu Navigasi
           </p>
 
@@ -231,10 +246,10 @@ export default function Sidebar({ isOpen, onClose }) {
                   if (onClose) onClose();
                 }}
                 className={({ isActive }) =>
-                  `flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group ${
+                  `relative flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 group ${
                     isActive
-                      ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-600/20'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                      ? 'bg-gradient-to-r from-blue-600/90 via-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-950/60 border border-white/15'
+                      : 'text-slate-300/85 hover:text-white hover:bg-white/[0.07] border border-transparent'
                   }`
                 }
               >
@@ -242,10 +257,10 @@ export default function Sidebar({ isOpen, onClose }) {
                   <>
                     <div className="flex items-center space-x-3 truncate">
                       <Icon
-                        className={`w-4.5 h-4.5 shrink-0 ${
+                        className={`w-4.5 h-4.5 shrink-0 transition-transform duration-200 ${
                           isActive
-                            ? 'text-white'
-                            : 'text-slate-400 group-hover:text-slate-700'
+                            ? 'text-white scale-105'
+                            : 'text-slate-400 group-hover:text-indigo-300 group-hover:scale-105'
                         }`}
                       />
                       <span className="truncate">{item.label}</span>
@@ -253,10 +268,10 @@ export default function Sidebar({ isOpen, onClose }) {
 
                     {item.badge && (
                       <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                           isActive
                             ? 'bg-white/20 text-white'
-                            : 'bg-indigo-100 text-indigo-700'
+                            : 'bg-purple-500/20 text-purple-200 border border-purple-400/20'
                         }`}
                       >
                         {item.badge}
@@ -267,35 +282,43 @@ export default function Sidebar({ isOpen, onClose }) {
               </NavLink>
             );
           })}
+
+          {/* Elegant Menu Divider */}
+          <div className="pt-4 mt-4 border-t border-white/10 px-3">
+            <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">
+              Campus Portal • v1.0
+            </p>
+          </div>
         </nav>
 
-        {/* User Card & Logout Button in Footer */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50/70">
-          <div className="flex items-center space-x-3 mb-3">
-            <div className="w-9 h-9 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-sm">
-              {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-slate-900 truncate">
-                {user?.name || 'Pengguna'}
-              </p>
-              <p className="text-[11px] text-slate-500 font-mono truncate">
-                {user?.identifier || user?.email || '-'}
-              </p>
+        {/* User Card & Logout Button pinned cleanly to bottom */}
+        <div className="relative z-10 mt-auto p-4 border-t border-white/10 bg-[#060A17]/60 backdrop-blur-md shrink-0">
+          <div className="p-3 rounded-2xl bg-white/[0.04] border border-white/10 mb-3">
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-md shadow-indigo-900/40 border border-white/15">
+                {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-white truncate">
+                  {user?.name || 'Pengguna'}
+                </p>
+                <p className="text-[11px] text-indigo-300/80 font-mono truncate">
+                  {user?.identifier || user?.email || '-'}
+                </p>
+              </div>
             </div>
           </div>
 
           <button
             type="button"
             onClick={logout}
-            className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-xl text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer"
+            className="w-full flex items-center justify-center space-x-2 py-2.5 px-3 rounded-xl text-xs font-semibold text-rose-200 bg-rose-500/15 hover:bg-rose-500/25 hover:text-white border border-rose-400/25 transition-all duration-200 cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span>Keluar (Logout)</span>
+            <span>Keluar</span>
           </button>
         </div>
       </aside>
     </>
   );
 }
-

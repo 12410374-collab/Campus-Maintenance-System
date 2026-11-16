@@ -8,6 +8,10 @@ import TechnicianDashboard from './pages/technician/Dashboard';
 import Tasks from './pages/technician/Tasks';
 import TaskDetail from './pages/technician/TaskDetail';
 import TechnicianHistory from './pages/technician/History';
+import ReporterDashboard from './pages/reporter/Dashboard';
+import CreateReport from './pages/reporter/CreateReport';
+import MyReports from './pages/reporter/MyReports';
+import ReporterNotifications from './pages/reporter/Notifications';
 
 /**
  * Root redirector: redirects to the user's role dashboard if authenticated,
@@ -98,46 +102,10 @@ export default function App() {
                 <ProtectedRoute allowedRoles={['Student', 'Lecturer', 'Staff']} />
               }
             >
-              <Route
-                path="/reporter"
-                element={
-                  <PlaceholderPage
-                    module="Reporter"
-                    title="Dashboard Pelapor"
-                    subtitle="Halaman utama pelapor untuk memantau status laporan kerusakan fasilitas."
-                  />
-                }
-              />
-              <Route
-                path="/reporter/create"
-                element={
-                  <PlaceholderPage
-                    module="Reporter"
-                    title="Buat Laporan Baru"
-                    subtitle="Formulir pengajuan laporan kerusakan fasilitas kampus UNKLAB."
-                  />
-                }
-              />
-              <Route
-                path="/reporter/reports"
-                element={
-                  <PlaceholderPage
-                    module="Reporter"
-                    title="Laporan Saya"
-                    subtitle="Daftar riwayat laporan kerusakan fasilitas yang telah dikirim."
-                  />
-                }
-              />
-              <Route
-                path="/reporter/notifications"
-                element={
-                  <PlaceholderPage
-                    module="Reporter"
-                    title="Notifikasi Pelapor"
-                    subtitle="Daftar notifikasi status perbaikan dan tindak lanjut laporan."
-                  />
-                }
-              />
+              <Route path="/reporter" element={<ReporterDashboard />} />
+              <Route path="/reporter/create" element={<CreateReport />} />
+              <Route path="/reporter/reports" element={<MyReports />} />
+              <Route path="/reporter/notifications" element={<ReporterNotifications />} />
             </Route>
 
             {/* Admin Routes (Member 3 - Admin Developer) */}

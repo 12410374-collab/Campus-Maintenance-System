@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect } from 'react';
 
-// Predefined demo accounts for Universitas Klabat (UNKLAB) roles
+// Predefined registered demo accounts for Universitas Klabat (UNKLAB) roles
 export const DEMO_ACCOUNTS = [
   {
     role: 'Student',
@@ -9,6 +9,7 @@ export const DEMO_ACCOUNTS = [
     name: 'Bryan Sompotan',
     identifier: '105021234',
     email: 'bryan@student.unklab.ac.id',
+    password: 'password123',
     department: 'Fakultas Ilmu Komputer (Informatika)',
     description: 'Akses pelapor mahasiswa',
   },
@@ -18,6 +19,7 @@ export const DEMO_ACCOUNTS = [
     name: 'Dr. Jerry Rogi, S.Kom., M.T.',
     identifier: '091234567',
     email: 'jerry.rogi@unklab.ac.id',
+    password: 'password123',
     department: 'Fakultas Ilmu Komputer',
     description: 'Akses pelapor dosen',
   },
@@ -27,6 +29,7 @@ export const DEMO_ACCOUNTS = [
     name: 'Maria Pangkey, S.E.',
     identifier: '19850412',
     email: 'maria.pangkey@unklab.ac.id',
+    password: 'password123',
     department: 'Biro Administrasi Akademik',
     description: 'Akses pelapor staf UNKLAB',
   },
@@ -36,6 +39,7 @@ export const DEMO_ACCOUNTS = [
     name: 'Admin Sarana & Fasilitas',
     identifier: 'admin',
     email: 'facilities@unklab.ac.id',
+    password: 'password123',
     department: 'Unit Sarana & Prasarana Kampus',
     description: 'Verifikasi, prioritas, dan penugasan teknisi',
   },
@@ -45,6 +49,7 @@ export const DEMO_ACCOUNTS = [
     name: 'Rudi Hartono',
     identifier: 'TECH-001',
     email: 'rudi.tech@unklab.ac.id',
+    password: 'password123',
     department: 'Divisi Pemeliharaan Fasilitas',
     specialization: 'Electrical & AC Specialist',
     description: 'Pelaksana perbaikan dan pembaruan progres',
@@ -83,49 +88,87 @@ export const AuthProvider = ({ children }) => {
   }, [user]);
 
   /**
-   * Simulated Login
+   * Validated Login Authentication
    * @param {Object} credentials - { identifier, password, role }
    * @returns {Promise<{ success: boolean, message?: string, user?: Object }>}
    */
   const login = async ({ identifier, password, role }) => {
     setLoading(true);
 
-    // Validation
     const cleanIdentifier = identifier?.trim();
     const cleanPassword = password?.trim();
     const cleanRole = role?.trim();
 
+    // 1. Validasi peran tidak boleh kosong
     if (!cleanRole) {
       setLoading(false);
       return { success: false, message: 'Silakan pilih peran (role) Anda terlebih dahulu.' };
     }
 
+    // 2. Validasi nama pengguna / identifier tidak boleh kosong
     if (!cleanIdentifier) {
       setLoading(false);
-      return { success: false, message: 'NIM / NIDN / NIP / Username tidak boleh kosong.' };
+      return { success: false, message: 'Nama pengguna atau ID tidak boleh kosong.' };
     }
 
+    // 3. Validasi kata sandi tidak boleh kosong
     if (!cleanPassword) {
       setLoading(false);
       return { success: false, message: 'Kata sandi tidak boleh kosong.' };
     }
 
-    // Match with demo account if available, or build realistic user profile
-    const matchedAccount = DEMO_ACCOUNTS.find(
+    // 4. Periksa apakah akun terdaftar dalam database akun demo
+    const registeredAccount = DEMO_ACCOUNTS.find(
       (acc) =>
-        acc.role === cleanRole &&
-        (acc.identifier.toLowerCase() === cleanIdentifier.toLowerCase() ||
-          acc.email.toLowerCase() === cleanIdentifier.toLowerCase())
+        acc.identifier.toLowerCase() === cleanIdentifier.toLowerCase() ||
+        acc.email.toLowerCase() === cleanIdentifier.toLowerCase()
     );
 
+    // Jika username / ID tidak ditemukan di seluruh daftar akun terdaftar
+    if (!registeredAccount) {
+      setLoading(false);
+      return {
+        success: false,
+        message: 'Nama pengguna atau ID tidak terdaftar dalam sistem.',
+      };
+    }
+
+    // 5. Validasi kesesuaian peran yang dipilih dengan peran akun terdaftar
+    if (registeredAccount.role !== cleanRole) {
+      const roleLabels = {
+        Student: 'Mahasiswa',
+        Lecturer: 'Dosen',
+        Staff: 'Staf',
+        Admin: 'Admin',
+        Technician: 'Teknisi',
+      };
+      const registeredRoleLabel = roleLabels[registeredAccount.role] || registeredAccount.role;
+      setLoading(false);
+      return {
+        success: false,
+        message: `Peran yang Anda pilih tidak sesuai. Akun "${cleanIdentifier}" terdaftar sebagai ${registeredRoleLabel}. Silakan pilih peran ${registeredRoleLabel}.`,
+      };
+    }
+
+    // 6. Validasi kata sandi akun
+    const validPassword = registeredAccount.password || 'password123';
+    if (cleanPassword !== validPassword) {
+      setLoading(false);
+      return {
+        success: false,
+        message: 'Kata sandi yang Anda masukkan salah. Silakan coba lagi.',
+      };
+    }
+
+    // Seluruh validasi berhasil -> Buat sesi pengguna
     const userSession = {
-      id: matchedAccount ? matchedAccount.identifier : `usr-${Date.now().toString(36)}`,
-      name: matchedAccount ? matchedAccount.name : cleanIdentifier,
-      identifier: cleanIdentifier,
-      email: matchedAccount ? matchedAccount.email : `${cleanIdentifier.toLowerCase()}@unklab.ac.id`,
-      role: cleanRole,
-      department: matchedAccount ? matchedAccount.department : 'Universitas Klabat',
-      specialization: matchedAccount?.specialization || null,
+      id: registeredAccount.identifier,
+      name: registeredAccount.name,
+      identifier: registeredAccount.identifier,
+      email: registeredAccount.email,
+      role: registeredAccount.role,
+      department: registeredAccount.department,
+      specialization: registeredAccount.specialization || null,
       loginAt: new Date().toISOString(),
     };
 
