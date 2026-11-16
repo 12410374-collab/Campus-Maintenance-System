@@ -55,7 +55,7 @@ export default function Header({ onMenuToggle }) {
   const RoleIcon = roleBadge.icon;
 
   return (
-    <header className="sticky top-0 z-30 h-18 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between">
+    <header className="sticky top-0 z-30 h-18 bg-white/85 backdrop-blur-md border-b border-indigo-100/80 shadow-[0_2px_14px_-6px_rgba(15,23,42,0.08)] px-4 sm:px-6 flex items-center justify-between">
       {/* Left: Mobile Toggle & System Label */}
       <div className="flex items-center space-x-3">
         <button
