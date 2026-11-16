@@ -10,3 +10,173 @@ body {
   font-family: Arial, sans-serif;
   background-color: #f8fafc;
 }
+
+/* Premium Campus Portal Background & Gentle Visual Animations */
+@keyframes loginGradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes floatOrbSlow {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(24px, -18px, 0) scale(1.04);
+  }
+}
+
+@keyframes floatOrbReverse {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-24px, 16px, 0) scale(0.97);
+  }
+}
+
+@keyframes floatCampusGentle {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -5px, 0);
+  }
+}
+
+@keyframes floatBadgeA {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(0, -5px, 0) rotate(-1.5deg);
+  }
+}
+
+@keyframes floatBadgeB {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(3px, 5px, 0) rotate(1.5deg);
+  }
+}
+
+@keyframes floatBadgeC {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(-3px, -4px, 0) rotate(1deg);
+  }
+}
+
+@keyframes floatBadgeD {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(-2px, 5px, 0) rotate(-1deg);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.login-animated-bg {
+  background: radial-gradient(circle at 18% 25%, rgba(79, 70, 229, 0.22) 0%, transparent 45%),
+              radial-gradient(circle at 82% 75%, rgba(124, 58, 237, 0.2) 0%, transparent 45%),
+              linear-gradient(135deg, #060a14 0%, #0b132b 38%, #150f33 70%, #081024 100%);
+  background-size: 220% 220%;
+  animation: loginGradientShift 24s ease-in-out infinite;
+}
+
+.bg-architectural-pattern {
+  background-image:
+    linear-gradient(to right, rgba(148, 163, 184, 0.024) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.024) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.animate-orb-slow {
+  animation: floatOrbSlow 20s ease-in-out infinite;
+  will-change: transform;
+}
+
+.animate-orb-reverse {
+  animation: floatOrbReverse 24s ease-in-out infinite;
+  will-change: transform;
+}
+
+.animate-float-campus {
+  animation: floatCampusGentle 10s cubic-bezier(0.37, 0, 0.63, 1) infinite;
+  will-change: transform;
+}
+
+.animate-float-badge-1 {
+  animation: floatBadgeA 10s cubic-bezier(0.37, 0, 0.63, 1) infinite;
+  will-change: transform;
+}
+
+.animate-float-badge-2 {
+  animation: floatBadgeB 12s cubic-bezier(0.37, 0, 0.63, 1) 1.2s infinite;
+  will-change: transform;
+}
+
+.animate-float-badge-3 {
+  animation: floatBadgeC 13s cubic-bezier(0.37, 0, 0.63, 1) 2.1s infinite;
+  will-change: transform;
+}
+
+.animate-float-badge-4 {
+  animation: floatBadgeD 11s cubic-bezier(0.37, 0, 0.63, 1) 1.6s infinite;
+  will-change: transform;
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.45s ease-out both;
+}
+
+.animate-fadeInUp {
+  animation: fadeInUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-animated-bg,
+  .animate-orb-slow,
+  .animate-orb-reverse,
+  .animate-float-campus,
+  .animate-float-badge-1,
+  .animate-float-badge-2,
+  .animate-float-badge-3,
+  .animate-float-badge-4,
+  .animate-fadeIn,
+  .animate-fadeInUp {
+    animation: none !important;
+    transition: none !important;
+  }
+}
