@@ -20,15 +20,14 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTasks } from '../../context/TaskContext';
+import { formatWitaTimestamp, formatWitaIsoDate } from '../../utils/dateFormat';
 
 function createUpdateRecord(authorName, status, notes) {
   const now = new Date();
-  const formattedDate = `${now.getDate()} Nov 2026, ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  const dayString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   return {
     id: `upd-${Date.now().toString(36)}`,
-    timestamp: formattedDate,
-    dayString,
+    timestamp: formatWitaTimestamp(now),
+    dayString: formatWitaIsoDate(now),
     author: `${authorName || 'Rudi Hartono'} (Teknisi)`,
     status,
     notes,
@@ -38,7 +37,7 @@ function createUpdateRecord(authorName, status, notes) {
 export default function TechnicianTaskDetail() {
   const { id } = useParams();
   const { user } = useAuth();
-  const { getTaskById, updateTask } = useTasks();
+  const { getTaskById, updateTask, loading } = useTasks();
 
   const task = getTaskById(id);
 
@@ -68,6 +67,15 @@ export default function TechnicianTaskDetail() {
     }, 3500);
     return () => clearTimeout(timer);
   }, [feedback]);
+
+  if (loading && !task) {
+    return (
+      <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center shadow-sm">
+        <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <p className="text-xs text-slate-500 font-medium">Memuat detail tugas dari server...</p>
+      </div>
+    );
+  }
 
   // If task ID is not found
   if (!task) {

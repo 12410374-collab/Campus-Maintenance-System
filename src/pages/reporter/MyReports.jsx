@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Search,
@@ -27,14 +27,32 @@ import {
   Briefcase,
   Info,
   Check,
+  AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { getReportsByReporterId } from '../../services/reportService';
+import { getAllEvidenceImages } from '../../utils/imageStorage';
 import {
   MOCK_REPORTER_REPORTS,
   REPORT_STATUS_OPTIONS,
   REPORT_CATEGORY_OPTIONS,
   filterReportsByReporter,
 } from '../../data/mockReporterReports';
+
+const PRIORITY_TO_URGENCY_ID = {
+  Low: 'Rendah',
+  Medium: 'Sedang',
+  High: 'Tinggi',
+  Critical: 'Kritis',
+};
+
+function resolveReporterPhoto(photoValue, idbPhotos = {}) {
+  if (typeof photoValue === 'string' && photoValue.startsWith('idb:')) {
+    const key = photoValue.replace('idb:', '');
+    return idbPhotos[key] || null;
+  }
+  return photoValue ?? null;
+}
 
 const TRACKING_STEPS = [
   { key: 'pending', label: 'Pending' },
@@ -62,11 +80,79 @@ function getProgressStepIndex(status) {
 export default function MyReports() {
   const { user, role } = useAuth();
 
+  // Data state dari JSON Server + fallback lokal
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedReport, setSelectedReport] = useState(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchMyReports() {
+      if (!user?.identifier) {
+        setReports([]);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      let idbPhotos = {};
+      try {
+        idbPhotos = await getAllEvidenceImages();
+      } catch (photoErr) {
+        console.warn('Gagal memuat foto dari IndexedDB:', photoErr);
+      }
+
+      try {
+        const apiReports = await getReportsByReporterId(user.identifier);
+        if (!isMounted) return;
+
+        const userId = user.identifier.toLowerCase();
+        const ownedReports = apiReports
+          .filter((item) => item.reporterId && item.reporterId.toLowerCase() === userId)
+          .map((item) => ({
+            ...item,
+            urgency:
+              item.urgency ||
+              PRIORITY_TO_URGENCY_ID[item.adminPriority || item.priority || item.aiUrgency] ||
+              'Sedang',
+            statusNote:
+              item.statusNote ||
+              (item.rejectionReason ? `Ditolak: ${item.rejectionReason}` : ''),
+            damagePhoto: resolveReporterPhoto(item.damagePhoto, idbPhotos),
+            evidencePhoto: resolveReporterPhoto(item.evidencePhoto, idbPhotos),
+          }))
+          .sort((a, b) => (b.id || '').localeCompare(a.id || ''));
+
+        setReports(ownedReports);
+        setError('');
+      } catch (err) {
+        console.warn('Gagal memuat Laporan Saya dari JSON Server, menggunakan fallback:', err);
+        if (!isMounted) return;
+
+        setReports(filterReportsByReporter(MOCK_REPORTER_REPORTS, user));
+        setError(
+          err?.message ||
+            'Gagal terhubung ke server backend. Menampilkan data cache lokal.'
+        );
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchMyReports();
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
 
   // Role identity badge meta
   const roleMeta = useMemo(() => {
@@ -84,9 +170,7 @@ export default function MyReports() {
   const RoleIcon = roleMeta.icon;
 
   // Pemisahan data: hanya menampilkan laporan milik pengguna yang sedang login
-  const myReports = useMemo(() => {
-    return filterReportsByReporter(MOCK_REPORTER_REPORTS, user);
-  }, [user]);
+  const myReports = reports;
 
   // Statistik ringkas laporan milik pengguna aktif
   const stats = useMemo(() => {
@@ -392,9 +476,24 @@ export default function MyReports() {
         </div>
       </section>
 
+      {/* Feedback error jaringan jika server backend tidak tersedia */}
+      {error && (
+        <div
+          role="alert"
+          className="p-3.5 rounded-2xl bg-amber-50 border-[1.5px] border-amber-200 text-xs text-amber-800 flex items-center space-x-2"
+        >
+          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
       {/* Daftar Laporan Terstruktur dengan Visualisasi Progres Status */}
       <section className="space-y-4">
-        {myReports.length === 0 ? (
+        {loading ? (
+          <div className="bg-white/95 rounded-3xl border-[1.5px] border-indigo-200/80 py-14 px-4 text-center text-xs text-slate-500 shadow-xs">
+            Memuat daftar laporan Anda dari server...
+          </div>
+        ) : myReports.length === 0 ? (
           /* Empty State: Pengguna belum pernah mengajukan laporan */
           <div className="bg-white/95 rounded-3xl border-[1.5px] border-dashed border-indigo-300/80 py-14 px-4 text-center shadow-xs">
             <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 mx-auto flex items-center justify-center mb-3">
@@ -645,11 +744,22 @@ export default function MyReports() {
                 </div>
               )}
 
-              {/* Placeholder info notice */}
+              {selectedReport.damagePhoto && (
+                <div>
+                  <p className="text-[11px] font-bold text-slate-700 mb-1">Lampiran Foto Kerusakan:</p>
+                  <img
+                    src={selectedReport.damagePhoto}
+                    alt="Foto kerusakan laporan"
+                    className="h-36 w-auto rounded-xl border border-slate-200 object-cover"
+                  />
+                </div>
+              )}
+
+              {/* Info status sinkronisasi */}
               <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200/70 text-[11px] text-blue-800 flex items-start space-x-2">
                 <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.2" />
                 <span>
-                  Pratinjau data contoh frontend. Riwayat lengkap akan terhubung setelah integrasi backend/API.
+                  Status dan catatan progres laporan tersinkronisasi dengan database sistem pemeliharaan kampus.
                 </span>
               </div>
             </div>

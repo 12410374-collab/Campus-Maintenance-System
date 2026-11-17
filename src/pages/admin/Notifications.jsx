@@ -126,16 +126,24 @@ export default function AdminNotifications() {
     setReadFilter('ALL');
   };
 
-  const handleMarkOneRead = (e, notifId) => {
+  const handleMarkOneRead = async (e, notifId) => {
     e.stopPropagation();
-    markNotificationAsRead(notifId);
-    setFeedback('Notifikasi ditandai sudah dibaca.');
+    const result = await markNotificationAsRead(notifId);
+    if (result?.success !== false) {
+      setFeedback('Notifikasi ditandai sudah dibaca.');
+    } else if (result?.message) {
+      setFeedback(result.message);
+    }
   };
 
-  const handleMarkAllRead = () => {
+  const handleMarkAllRead = async () => {
     if (unreadNotificationCount === 0) return;
-    markAllNotificationsAsRead();
-    setFeedback('Seluruh notifikasi telah ditandai sudah dibaca.');
+    const result = await markAllNotificationsAsRead();
+    if (result?.success !== false) {
+      setFeedback('Seluruh notifikasi telah ditandai sudah dibaca.');
+    } else if (result?.message) {
+      setFeedback(result.message);
+    }
   };
 
   const handleOpenNotification = (notif) => {

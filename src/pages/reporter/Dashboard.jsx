@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   PlusCircle,
@@ -19,79 +19,112 @@ import {
   Briefcase,
   Bell,
   Sparkles,
+  AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { getReportsByReporterId } from '../../services/reportService';
+import {
+  MOCK_REPORTER_REPORTS,
+  filterReportsByReporter,
+} from '../../data/mockReporterReports';
 
-// Mock data laporan pelapor yang konsisten dengan fasilitas kampus Universitas Klabat
-const REPORTER_REPORTS = [
-  {
-    id: 'RPT-2026-0104',
-    title: 'AC Bocor & Tidak Dingin di Lab Jaringan',
-    category: 'Electrical',
-    location: 'GK2 - Lantai 2, Lab Jaringan Komputer',
-    reportedDate: '13 Nov 2026, 09:15',
-    status: 'Dalam Proses',
-    priority: 'Tinggi',
-  },
-  {
-    id: 'RPT-2026-0102',
-    title: 'Lampu Utama Ruang Kuliah 204 Padam',
-    category: 'Electrical',
-    location: 'GK1 - Lantai 2, Ruang Kuliah 204',
-    reportedDate: '13 Nov 2026, 08:00',
-    status: 'Menunggu Verifikasi',
-    priority: 'Tinggi',
-  },
-  {
-    id: 'RPT-2026-0099',
-    title: 'Kran Air Wastafel Patah di Tempat Wudhu',
-    category: 'Plumbing',
-    location: 'Gedung Pioneer Chapel',
-    reportedDate: '12 Nov 2026, 16:45',
-    status: 'Menunggu Verifikasi',
-    priority: 'Sedang',
-  },
-  {
-    id: 'RPT-2026-0097',
-    title: 'Koneksi Proyektor Plafon Sering Terputus',
-    category: 'Electronics',
-    location: 'GK2 - Lantai 3, Ruang Seminar',
-    reportedDate: '12 Nov 2026, 13:10',
-    status: 'Dalam Proses',
-    priority: 'Sedang',
-  },
-  {
-    id: 'RPT-2026-0095',
-    title: 'Stopkontak Meja Dosen Korslet',
-    category: 'Electrical',
-    location: 'GK2 - Lantai 1, Ruang 102',
-    reportedDate: '12 Nov 2026, 10:45',
-    status: 'Selesai',
-    priority: 'Kritis',
-  },
-  {
-    id: 'RPT-2026-0091',
-    title: 'Engsel Pintu Ruang Baca Longgar',
-    category: 'Furniture',
-    location: 'Perpustakaan Pusat - Lantai 2',
-    reportedDate: '11 Nov 2026, 11:30',
-    status: 'Selesai',
-    priority: 'Sedang',
-  },
-  {
-    id: 'RPT-2026-0089',
-    title: 'Kabel LAN Meja Front Desk Putus',
-    category: 'Infrastructure',
-    location: 'Perpustakaan Pusat - Lantai 1',
-    reportedDate: '10 Nov 2026, 09:20',
-    status: 'Selesai',
-    priority: 'Rendah',
-  },
-];
+const CATEGORY_KEY_MAP = {
+  Kelistrikan: 'Electrical',
+  Electrical: 'Electrical',
+  'Plumbing / Sanitasi': 'Plumbing',
+  Plumbing: 'Plumbing',
+  Elektronik: 'Electronics',
+  Electronics: 'Electronics',
+  Furniture: 'Furniture',
+  'Infrastruktur / Bangunan': 'Infrastructure',
+  Infrastructure: 'Infrastructure',
+  Lainnya: 'Infrastructure',
+};
+
+function mapBackendStatusToDashboardLabel(status) {
+  switch (status) {
+    case 'Pending':
+    case 'Menunggu Verifikasi':
+      return 'Menunggu Verifikasi';
+    case 'Approved':
+    case 'Assigned':
+    case 'In Progress':
+    case 'Dalam Proses':
+      return 'Dalam Proses';
+    case 'Completed':
+    case 'Selesai':
+      return 'Selesai';
+    case 'Rejected':
+    case 'Ditolak':
+      return 'Ditolak';
+    default:
+      return 'Menunggu Verifikasi';
+  }
+}
 
 export default function ReporterDashboard() {
   const { user, role } = useAuth();
   const [statusFilter, setStatusFilter] = useState('Semua');
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchReporterReports() {
+      if (!user?.identifier) {
+        setReports([]);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const apiReports = await getReportsByReporterId(user.identifier);
+        if (!isMounted) return;
+
+        // Pastikan hanya laporan milik pengguna yang sedang login & urutkan terbaru lebih dulu
+        const ownedReports = apiReports
+          .filter(
+            (r) =>
+              !r.reporterId ||
+              r.reporterId.toLowerCase() === user.identifier.toLowerCase()
+          )
+          .sort((a, b) => (b.id || '').localeCompare(a.id || ''));
+
+        setReports(ownedReports);
+        setError('');
+      } catch (err) {
+        console.warn('Gagal memuat laporan Reporter dari JSON Server, menggunakan fallback:', err);
+        if (!isMounted) return;
+
+        setReports(filterReportsByReporter(MOCK_REPORTER_REPORTS, user));
+        setError(
+          err?.message ||
+            'Tidak dapat terhubung ke server backend. Menampilkan data cache lokal.'
+        );
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchReporterReports();
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  const normalizedReports = useMemo(() => {
+    return reports.map((r) => ({
+      ...r,
+      dashboardStatus: mapBackendStatusToDashboardLabel(r.status),
+      categoryKey:
+        r.techCategory || CATEGORY_KEY_MAP[r.category] || r.category || 'Infrastructure',
+    }));
+  }, [reports]);
 
   // Role identity badge configuration for Welcome Hero
   const roleMeta = useMemo(() => {
@@ -108,38 +141,53 @@ export default function ReporterDashboard() {
 
   const RoleIcon = roleMeta.icon;
 
-  // Dynamic statistics calculation
+  // Dynamic statistics calculation from actual backend reports
   const stats = useMemo(() => {
-    const total = REPORTER_REPORTS.length;
-    const pending = REPORTER_REPORTS.filter((r) => r.status === 'Menunggu Verifikasi').length;
-    const inProgress = REPORTER_REPORTS.filter((r) => r.status === 'Dalam Proses').length;
-    const completed = REPORTER_REPORTS.filter((r) => r.status === 'Selesai').length;
+    const total = normalizedReports.length;
+    const pending = normalizedReports.filter(
+      (r) => r.dashboardStatus === 'Menunggu Verifikasi'
+    ).length;
+    const inProgress = normalizedReports.filter(
+      (r) => r.dashboardStatus === 'Dalam Proses'
+    ).length;
+    const completed = normalizedReports.filter(
+      (r) => r.dashboardStatus === 'Selesai'
+    ).length;
     return { total, pending, inProgress, completed };
-  }, []);
+  }, [normalizedReports]);
 
   // Filtered recent reports
   const filteredReports = useMemo(() => {
-    if (statusFilter === 'Semua') return REPORTER_REPORTS;
-    return REPORTER_REPORTS.filter((r) => r.status === statusFilter);
-  }, [statusFilter]);
+    const list =
+      statusFilter === 'Semua'
+        ? normalizedReports
+        : normalizedReports.filter((r) => r.dashboardStatus === statusFilter);
+    return list.slice(0, 8);
+  }, [normalizedReports, statusFilter]);
 
   // Category breakdown for side visual summary
   const categoryBreakdown = useMemo(() => {
-    const counts = REPORTER_REPORTS.reduce((acc, r) => {
-      acc[r.category] = (acc[r.category] || 0) + 1;
+    const counts = normalizedReports.reduce((acc, r) => {
+      acc[r.categoryKey] = (acc[r.categoryKey] || 0) + 1;
       return acc;
     }, {});
     return [
       { name: 'Electrical', label: 'Kelistrikan & AC', count: counts.Electrical || 0, color: 'from-blue-500 to-indigo-600' },
       { name: 'Plumbing', label: 'Pipa & Sanitasi', count: counts.Plumbing || 0, color: 'from-sky-400 to-blue-500' },
       { name: 'Electronics', label: 'Perangkat Elektronik', count: counts.Electronics || 0, color: 'from-indigo-500 to-purple-600' },
-      { name: 'Infrastructure', label: 'Sarana & Bangunan', count: (counts.Infrastructure || 0) + (counts.Furniture || 0), color: 'from-purple-500 to-violet-600' },
+      {
+        name: 'Infrastructure',
+        label: 'Sarana & Bangunan',
+        count: (counts.Infrastructure || 0) + (counts.Furniture || 0) + (counts.Other || 0),
+        color: 'from-purple-500 to-violet-600',
+      },
     ];
-  }, []);
+  }, [normalizedReports]);
 
   // Category icon renderer
   const getCategoryIcon = (category) => {
-    switch (category) {
+    const normalized = CATEGORY_KEY_MAP[category] || category;
+    switch (normalized) {
       case 'Electrical':
         return {
           icon: Zap,
@@ -184,6 +232,13 @@ export default function ReporterDashboard() {
           <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/90">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
             <span>Selesai</span>
+          </span>
+        );
+      case 'Ditolak':
+        return (
+          <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200/90">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-600"></span>
+            <span>Ditolak</span>
           </span>
         );
       case 'Menunggu Verifikasi':
@@ -398,60 +453,78 @@ export default function ReporterDashboard() {
             </div>
           </div>
 
+          {/* Feedback error jaringan jika server backend tidak tersedia */}
+          {error && (
+            <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
           {/* Styled Report Cards with Crisp 1.5px Borders & 14px Separation */}
           <div className="space-y-3.5">
-            {filteredReports.map((report) => {
-              const catStyle = getCategoryIcon(report.category);
-              const CategoryIcon = catStyle.icon;
+            {loading ? (
+              <div className="py-10 text-center text-xs text-slate-500">
+                Memuat data laporan dari server...
+              </div>
+            ) : filteredReports.length === 0 ? (
+              <div className="py-10 text-center text-xs text-slate-500 bg-[#F7F9FD] rounded-2xl border border-dashed border-slate-300">
+                Belum ada laporan untuk kategori status yang dipilih.
+              </div>
+            ) : (
+              filteredReports.map((report) => {
+                const catStyle = getCategoryIcon(report.categoryKey || report.category);
+                const CategoryIcon = catStyle.icon;
 
-              return (
-                <div
-                  key={report.id}
-                  className="group p-4 rounded-2xl border-[1.5px] border-slate-300/75 bg-[#F7F9FD] hover:bg-white hover:border-indigo-400 hover:shadow-sm hover:-translate-y-0.5 transition-all duration-200"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-start space-x-3.5 min-w-0">
-                      {/* Category Icon Box */}
-                      <div
-                        className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 mt-0.5 transition-transform duration-200 group-hover:scale-105 ${catStyle.wrapper}`}
-                      >
-                        <CategoryIcon className="w-5 h-5" />
-                      </div>
-
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
-                            {report.id}
-                          </span>
-                          <span className="text-[11px] font-medium text-slate-500">
-                            {report.category}
-                          </span>
+                return (
+                  <div
+                    key={report.id}
+                    className="group p-4 rounded-2xl border-[1.5px] border-slate-300/75 bg-[#F7F9FD] hover:bg-white hover:border-indigo-400 hover:shadow-sm hover:-translate-y-0.5 transition-all duration-200"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-start space-x-3.5 min-w-0">
+                        {/* Category Icon Box */}
+                        <div
+                          className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 mt-0.5 transition-transform duration-200 group-hover:scale-105 ${catStyle.wrapper}`}
+                        >
+                          <CategoryIcon className="w-5 h-5" />
                         </div>
 
-                        <h3 className="text-sm font-bold text-slate-900 group-hover:text-indigo-700 transition-colors truncate">
-                          {report.title}
-                        </h3>
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                              {report.id}
+                            </span>
+                            <span className="text-[11px] font-medium text-slate-500">
+                              {report.category}
+                            </span>
+                          </div>
 
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                          <span className="inline-flex items-center space-x-1">
-                            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span className="truncate">{report.location}</span>
-                          </span>
-                          <span className="inline-flex items-center space-x-1">
-                            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span>{report.reportedDate}</span>
-                          </span>
+                          <h3 className="text-sm font-bold text-slate-900 group-hover:text-indigo-700 transition-colors truncate">
+                            {report.title}
+                          </h3>
+
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                            <span className="inline-flex items-center space-x-1">
+                              <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span className="truncate">{report.location}</span>
+                            </span>
+                            <span className="inline-flex items-center space-x-1">
+                              <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span>{report.reportedDate}</span>
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="shrink-0 self-start sm:self-center">
-                      {getStatusBadge(report.status)}
+                      <div className="shrink-0 self-start sm:self-center">
+                        {getStatusBadge(report.dashboardStatus)}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
 
           <div className="mt-5 pt-4 border-t border-slate-200/80 flex justify-end">

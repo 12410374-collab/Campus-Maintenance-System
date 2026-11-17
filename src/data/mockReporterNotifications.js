@@ -22,7 +22,7 @@ export const MOCK_REPORTER_NOTIFICATIONS = [
     title: 'Perbaikan Sedang Dikerjakan',
     message:
       'Teknisi Rudi Hartono sedang membersihkan saluran kondensasi dan memeriksa kompresor AC di Lab Jaringan Komputer.',
-    reportId: 'RPT-2026-0104',
+    reportId: 'RPT-2026-0109',
     timestamp: '16 Nov 2026, 09:30',
     isRead: false,
   },
@@ -32,9 +32,9 @@ export const MOCK_REPORTER_NOTIFICATIONS = [
     type: 'pending_verification',
     title: 'Menunggu Verifikasi Admin',
     message:
-      'Laporan kerusakan Kran Wastafel Toilet Mahasiswa Lantai 2 sedang ditinjau oleh Admin Sarana & Prasarana.',
-    reportId: 'RPT-2026-0106',
-    timestamp: '15 Nov 2026, 10:25',
+      'Laporan kerusakan Proyektor LCD Ruang Kuliah 301 Tidak Menampilkan Gambar sedang ditinjau oleh Admin Sarana & Prasarana.',
+    reportId: 'RPT-2026-0110',
+    timestamp: '16 Nov 2026, 08:15',
     isRead: false,
   },
   {
@@ -54,9 +54,9 @@ export const MOCK_REPORTER_NOTIFICATIONS = [
     type: 'assigned',
     title: 'Teknisi Telah Ditugaskan',
     message:
-      'Teknisi pemeliharaan furnitur telah ditugaskan untuk memperbaiki Kursi Kuliah Lipat Engsel Patah di R.202.',
-    reportId: 'RPT-2026-0103',
-    timestamp: '13 Nov 2026, 08:45',
+      'Teknisi Rudi Hartono telah ditugaskan untuk memperbaiki Kran Air Wastafel Patah di Musholla Kampus.',
+    reportId: 'RPT-2026-0099',
+    timestamp: '12 Nov 2026, 17:00',
     isRead: true,
   },
   {
@@ -65,9 +65,9 @@ export const MOCK_REPORTER_NOTIFICATIONS = [
     type: 'submitted',
     title: 'Laporan Berhasil Dikirim',
     message:
-      'Laporan baru mengenai Kran Wastafel Toilet Mahasiswa Lantai 2 Rusak telah diterima oleh sistem.',
-    reportId: 'RPT-2026-0106',
-    timestamp: '15 Nov 2026, 10:20',
+      'Laporan baru mengenai Proyektor LCD Ruang Kuliah 301 Tidak Menampilkan Gambar telah diterima oleh sistem.',
+    reportId: 'RPT-2026-0110',
+    timestamp: '16 Nov 2026, 08:10',
     isRead: true,
   },
   {
@@ -77,8 +77,8 @@ export const MOCK_REPORTER_NOTIFICATIONS = [
     title: 'Perbaikan Telah Selesai',
     message:
       'Perbaikan Lampu Lorong Asrama Putra Lt. 1 Mati telah selesai dikerjakan. Unit ballast dan lampu LED telah diganti.',
-    reportId: 'RPT-2026-0094',
-    timestamp: '11 Nov 2026, 15:40',
+    reportId: 'RPT-2026-0103',
+    timestamp: '13 Nov 2026, 11:20',
     isRead: true,
   },
   {
@@ -112,7 +112,7 @@ export const MOCK_REPORTER_NOTIFICATIONS = [
     title: 'Teknisi Telah Ditugaskan',
     message:
       'Teknisi kelistrikan telah ditugaskan menangani Lampu Utama Ruang Kuliah 204 Padam dengan prioritas Tinggi.',
-    reportId: 'RPT-2026-0102',
+    reportId: 'RPT-2026-0106',
     timestamp: '15 Nov 2026, 14:10',
     isRead: false,
   },
@@ -122,9 +122,9 @@ export const MOCK_REPORTER_NOTIFICATIONS = [
     type: 'pending_verification',
     title: 'Menunggu Verifikasi Admin',
     message:
-      'Laporan Engsel Pintu Ruang Dosen FIK Berderit & Macet sedang menunggu verifikasi dari Admin Sarana.',
-    reportId: 'RPT-2026-0107',
-    timestamp: '15 Nov 2026, 09:45',
+      'Laporan Panel MCB Lantai 2 Berbau Hangus & Sering Trip sedang menunggu verifikasi dari Admin Sarana.',
+    reportId: 'RPT-2026-0112',
+    timestamp: '16 Nov 2026, 09:42',
     isRead: true,
   },
   {
@@ -133,9 +133,9 @@ export const MOCK_REPORTER_NOTIFICATIONS = [
     type: 'submitted',
     title: 'Laporan Berhasil Dikirim',
     message:
-      'Pengajuan laporan Engsel Pintu Ruang Dosen FIK telah berhasil masuk ke antrean sistem.',
-    reportId: 'RPT-2026-0107',
-    timestamp: '15 Nov 2026, 09:40',
+      'Pengajuan laporan Panel MCB Lantai 2 Berbau Hangus & Sering Trip telah berhasil masuk ke antrean sistem.',
+    reportId: 'RPT-2026-0112',
+    timestamp: '16 Nov 2026, 09:40',
     isRead: true,
   },
   {
@@ -165,12 +165,12 @@ export const MOCK_REPORTER_NOTIFICATIONS = [
   {
     id: 'NTF-302',
     reporterId: '19850412',
-    type: 'approved',
-    title: 'Laporan Telah Disetujui',
+    type: 'pending_verification',
+    title: 'Menunggu Verifikasi Admin',
     message:
-      'Laporan Scanner & Terminal Listrik Meja Front Office Mati disetujui Admin dan diteruskan ke tim teknisi elektro.',
-    reportId: 'RPT-2026-0101',
-    timestamp: '14 Nov 2026, 11:20',
+      'Laporan Kebocoran Pipa Utama Toilet Wanita Lantai 1 sedang ditinjau oleh Admin Sarana & Prasarana.',
+    reportId: 'RPT-2026-0111',
+    timestamp: '16 Nov 2026, 08:58',
     isRead: false,
   },
   {
@@ -179,9 +179,9 @@ export const MOCK_REPORTER_NOTIFICATIONS = [
     type: 'submitted',
     title: 'Laporan Berhasil Dikirim',
     message:
-      'Laporan Scanner & Terminal Listrik Meja Front Office Mati berhasil tercatat di sistem.',
-    reportId: 'RPT-2026-0101',
-    timestamp: '14 Nov 2026, 08:30',
+      'Laporan Kebocoran Pipa Utama Toilet Wanita Lantai 1 berhasil tercatat di sistem.',
+    reportId: 'RPT-2026-0111',
+    timestamp: '16 Nov 2026, 08:55',
     isRead: true,
   },
   {

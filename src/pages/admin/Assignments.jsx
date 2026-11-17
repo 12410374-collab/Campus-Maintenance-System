@@ -68,43 +68,63 @@ function getPriorityStyle(level) {
   }
 }
 
+function isReportEligibleForAssignment(report) {
+  return (
+    Boolean(report) &&
+    report.status === 'Approved' &&
+    !report.assignedTechnicianId &&
+    !report.assignedTechnician
+  );
+}
+
 export default function AdminAssignments() {
   const { user } = useAuth();
   const { reports, technicians, assignReportToTechnician } = useAdmin();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const assignmentPanelRef = useRef(null);
 
-  const initialQueryReportId = searchParams.get('reportId');
+  const queryReportId = searchParams.get('reportId');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [priorityFilter, setPriorityFilter] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState(
-    initialQueryReportId ? 'ALL' : 'READY'
-  );
+  const [statusFilter, setStatusFilter] = useState('READY');
 
-  // Pilih otomatis laporan berstatus Disetujui (atau sesuai query ?reportId=...)
-  const [selectedReportId, setSelectedReportId] = useState(() => {
-    if (initialQueryReportId) {
-      const target = reports.find((r) => r.id === initialQueryReportId);
-      if (target && target.status === 'Approved' && !target.assignedTechnician) {
+  const [trackedQueryId, setTrackedQueryId] = useState(queryReportId);
+  const [userSelectedReportId, setUserSelectedReportId] = useState(null);
+
+  if (queryReportId !== trackedQueryId) {
+    setTrackedQueryId(queryReportId);
+    setUserSelectedReportId(null);
+  }
+
+  const effectiveSelectedReportId = useMemo(() => {
+    if (userSelectedReportId) {
+      const picked = reports.find((r) => r.id === userSelectedReportId);
+      if (isReportEligibleForAssignment(picked)) {
+        return picked.id;
+      }
+    }
+
+    if (queryReportId) {
+      const target = reports.find(
+        (r) => r.id.toLowerCase() === queryReportId.toLowerCase()
+      );
+      if (isReportEligibleForAssignment(target)) {
         return target.id;
       }
     }
-    const firstReady = reports.find(
-      (r) => r.status === 'Approved' && !r.assignedTechnician
-    );
+
+    const firstReady = reports.find((r) => isReportEligibleForAssignment(r));
     return firstReady?.id || null;
-  });
+  }, [reports, userSelectedReportId, queryReportId]);
 
   const [selectedTechId, setSelectedTechId] = useState(null);
   const [feedback, setFeedback] = useState(null);
 
   // Ringkasan 3 metrik utama halaman Penugasan Teknisi
   const overviewStats = useMemo(() => {
-    const readyCount = reports.filter(
-      (r) => r.status === 'Approved' && !r.assignedTechnician
-    ).length;
+    const readyCount = reports.filter((r) => isReportEligibleForAssignment(r)).length;
     const assignedCount = reports.filter(
       (r) => r.status === 'Assigned' || r.status === 'In Progress'
     ).length;
@@ -131,8 +151,8 @@ export default function AdminAssignments() {
       const finalPriority = r.adminPriority || r.aiUrgency;
       const matchesPriority = priorityFilter === 'ALL' || finalPriority === priorityFilter;
 
-      const isReady = r.status === 'Approved' && !r.assignedTechnician;
-      const isAlreadyAssigned = Boolean(r.assignedTechnician);
+      const isReady = isReportEligibleForAssignment(r);
+      const isAlreadyAssigned = Boolean(r.assignedTechnicianId || r.assignedTechnician);
       const matchesStatus =
         statusFilter === 'ALL'
           ? true
@@ -145,13 +165,10 @@ export default function AdminAssignments() {
   }, [reports, searchQuery, categoryFilter, priorityFilter, statusFilter]);
 
   const selectedReport = useMemo(() => {
-    if (!selectedReportId) return null;
-    const found = reports.find((r) => r.id === selectedReportId);
-    if (!found || found.status !== 'Approved' || found.assignedTechnician) {
-      return null;
-    }
-    return found;
-  }, [reports, selectedReportId]);
+    if (!effectiveSelectedReportId) return null;
+    const found = reports.find((r) => r.id === effectiveSelectedReportId);
+    return isReportEligibleForAssignment(found) ? found : null;
+  }, [reports, effectiveSelectedReportId]);
 
   // Urutkan teknisi: Tersedia/Bertugas > Direkomendasikan > Tugas Aktif tersedikit > Tidak Tersedia terakhir
   const sortedTechnicians = useMemo(() => {
@@ -192,19 +209,22 @@ export default function AdminAssignments() {
   };
 
   const handleSelectReport = (report) => {
-    if (report.status !== 'Approved' || report.assignedTechnician) return;
-    setSelectedReportId(report.id);
+    if (!isReportEligibleForAssignment(report)) return;
+    setUserSelectedReportId(report.id);
     setSelectedTechId(null);
     setFeedback(null);
+    if (queryReportId && queryReportId.toLowerCase() !== report.id.toLowerCase()) {
+      setSearchParams({}, { replace: true });
+    }
     if (assignmentPanelRef.current) {
       assignmentPanelRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   };
 
-  const handleConfirmAssignment = () => {
+  const handleConfirmAssignment = async () => {
     if (!selectedReport || !selectedTechnician) return;
 
-    const result = assignReportToTechnician(
+    const result = await assignReportToTechnician(
       selectedReport.id,
       selectedTechnician.id,
       user?.name
@@ -216,7 +236,10 @@ export default function AdminAssignments() {
         text: `${result.message} Tugas kini muncul pada akun teknisi terkait.`,
       });
       setSelectedTechId(null);
-      setSelectedReportId(null);
+      setUserSelectedReportId(null);
+      if (queryReportId) {
+        setSearchParams({}, { replace: true });
+      }
     } else {
       setFeedback({
         type: 'error',
@@ -478,8 +501,7 @@ export default function AdminAssignments() {
                 </thead>
                 <tbody className="divide-y-[1.5px] divide-slate-200/80 text-xs">
                   {filteredReports.map((report) => {
-                    const isEligible =
-                      report.status === 'Approved' && !report.assignedTechnician;
+                    const isEligible = isReportEligibleForAssignment(report);
                     const isSelected = selectedReport?.id === report.id;
 
                     return (
@@ -534,7 +556,7 @@ export default function AdminAssignments() {
                             className={`inline-flex px-2 py-0.5 rounded-full text-[10.5px] font-semibold border ${
                               isEligible
                                 ? 'bg-blue-50 text-blue-800 border-blue-200'
-                                : report.assignedTechnician
+                                : report.assignedTechnicianId || report.assignedTechnician
                                 ? 'bg-violet-50 text-violet-800 border-violet-200'
                                 : 'bg-slate-100 text-slate-600 border-slate-300'
                             }`}
@@ -576,8 +598,7 @@ export default function AdminAssignments() {
             {/* Mobile & Tablet Cards */}
             <div className="xl:hidden p-4 space-y-3 bg-[#eef2f9]/55">
               {filteredReports.map((report) => {
-                const isEligible =
-                  report.status === 'Approved' && !report.assignedTechnician;
+                const isEligible = isReportEligibleForAssignment(report);
                 const isSelected = selectedReport?.id === report.id;
 
                 return (
@@ -628,13 +649,18 @@ export default function AdminAssignments() {
                       </span>
 
                       {isEligible ? (
-                        <span
-                          className={`px-3 py-1 rounded-xl text-xs font-bold ${
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectReport(report);
+                          }}
+                          className={`px-3 py-1 rounded-xl text-xs font-bold cursor-pointer ${
                             isSelected ? 'bg-[#2563EB] text-white' : 'bg-[#101A30] text-white'
                           }`}
                         >
                           {isSelected ? 'Dipilih' : 'Pilih'}
-                        </span>
+                        </button>
                       ) : (
                         <span className="inline-flex items-center space-x-1 text-[11px] text-slate-400">
                           <Lock className="w-3 h-3" />
