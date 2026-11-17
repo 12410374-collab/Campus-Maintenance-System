@@ -119,15 +119,26 @@ export default function AdminTechnicians() {
     setSortBy('name-asc');
   };
 
-  const handleSaveTechnician = (payload) => {
-    if (formModalState?.mode === 'edit') {
-      updateTechnician(payload);
-      setFeedback(`Data teknisi ${payload.name} (${payload.id}) berhasil diperbarui pada sesi lokal.`);
-    } else {
-      addTechnician(payload);
-      setFeedback(`Teknisi ${payload.name} (${payload.id}) berhasil ditambahkan pada sesi lokal.`);
+  const handleSaveTechnician = async (payload) => {
+    const isEdit = formModalState?.mode === 'edit';
+    const result = isEdit
+      ? await updateTechnician(payload)
+      : await addTechnician(payload);
+
+    if (!result?.success) {
+      setFeedback(
+        result?.message || 'Gagal menyimpan data teknisi ke server backend.'
+      );
+      setFormModalState(null);
+      return;
     }
 
+    setFeedback(
+      result.message ||
+        (isEdit
+          ? `Data teknisi ${payload.name} (${payload.id}) berhasil diperbarui.`
+          : `Teknisi ${payload.name} (${payload.id}) berhasil ditambahkan.`)
+    );
     setFormModalState(null);
   };
 

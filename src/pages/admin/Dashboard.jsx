@@ -28,17 +28,13 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAdmin } from '../../context/AdminContext';
+import { formatWitaLongDateId } from '../../utils/dateFormat';
 import {
   ADMIN_REPORT_STATUSES,
   MOCK_MAINTENANCE_ACTIVITY,
 } from '../../data/mockAdminReports';
 
-const COMMAND_CENTER_DATE = new Intl.DateTimeFormat('id-ID', {
-  weekday: 'long',
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric',
-}).format(new Date());
+const COMMAND_CENTER_DATE = formatWitaLongDateId(new Date());
 
 const STATUS_META = {
   Pending: {

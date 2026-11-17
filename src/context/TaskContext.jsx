@@ -1,7 +1,25 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from 'react';
 import { useAuth } from './AuthContext';
 import { saveEvidenceImage, getAllEvidenceImages } from '../utils/imageStorage';
+import { formatWitaTimestamp, formatWitaIsoDate } from '../utils/dateFormat';
+import {
+  getAllReports,
+  updateReport as patchReportInApi,
+  createReport as createReportInApi,
+} from '../services/reportService';
+import {
+  createNotification as createNotificationInApi,
+  getNotificationsByRecipientId,
+} from '../services/activityNotificationService';
 
 const CATEGORY_TO_TECH_MAP = {
   Kelistrikan: 'Electrical',
@@ -12,21 +30,36 @@ const CATEGORY_TO_TECH_MAP = {
   Lainnya: 'Other',
 };
 
+const TECH_TO_CATEGORY_MAP = {
+  Electrical: 'Kelistrikan',
+  Plumbing: 'Plumbing / Sanitasi',
+  Electronics: 'Elektronik',
+  Furniture: 'Furniture',
+  Infrastructure: 'Infrastruktur / Bangunan',
+  Other: 'Lainnya',
+};
+
+const TECHNICIAN_TASK_STATUSES = new Set(['Assigned', 'In Progress', 'Completed']);
+
 // Unified 12 tasks master dataset matching Dashboard, Tasks, TaskDetail, and History
 export const INITIAL_TASKS = [
   {
-    id: 'RPT-2026-0104',
+    id: 'RPT-2026-0109',
     title: 'AC Bocor & Tidak Dingin di Lab Jaringan',
     category: 'Electrical',
     location: 'GK2 - Lantai 2, Lab Jaringan Komputer',
     priority: 'Critical',
     aiPriority: 'High',
     status: 'In Progress',
-    reportedDate: '13 Nov 2026, 09:15',
+    reportedDate: '15 Nov 2026, 14:20',
     completedDate: null,
     completionDay: null,
     duration: '',
+    reporterId: '105021234',
     reporterName: 'Bryan Sompotan (Mahasiswa - 105021234)',
+    assignedByAdmin: true,
+    assignedTechnicianId: 'TECH-001',
+    assignedTechnicianName: 'Rudi Hartono',
     description:
       'Unit AC split meneteskan air ke meja praktikum dan kipas mengeluarkan suara berisik. Suhu ruangan meningkat drastis sehingga server lab berisiko overheat.',
     urgencyReason: 'Suhu lab tinggi, berisiko merusak server praktikum.',
@@ -45,7 +78,7 @@ export const INITIAL_TASKS = [
     updates: [
       {
         id: 'upd-1',
-        timestamp: '13 Nov 2026, 09:30',
+        timestamp: '15 Nov 2026, 14:35',
         author: 'Admin Sarana & Fasilitas',
         status: 'Assigned',
         notes:
@@ -53,7 +86,7 @@ export const INITIAL_TASKS = [
       },
       {
         id: 'upd-2',
-        timestamp: '13 Nov 2026, 10:15',
+        timestamp: '15 Nov 2026, 15:10',
         author: 'Rudi Hartono (Teknisi)',
         status: 'In Progress',
         notes:
@@ -62,18 +95,22 @@ export const INITIAL_TASKS = [
     ],
   },
   {
-    id: 'RPT-2026-0102',
+    id: 'RPT-2026-0106',
     title: 'Lampu Utama Ruang Kuliah 204 Padam',
     category: 'Electrical',
     location: 'GK1 - Lantai 2, Ruang Kuliah 204',
     priority: 'High',
     aiPriority: 'Medium',
     status: 'Assigned',
-    reportedDate: '13 Nov 2026, 08:00',
+    reportedDate: '14 Nov 2026, 09:50',
     completedDate: null,
     completionDay: null,
     duration: '',
+    reporterId: '091234567',
     reporterName: 'Dr. Jerry Rogi (Dosen - 091234567)',
+    assignedByAdmin: true,
+    assignedTechnicianId: 'TECH-001',
+    assignedTechnicianName: 'Rudi Hartono',
     description:
       'Lampu tabung LED utama tidak menyala sama sekali saat sakelar dinyalakan. Ruangan gelap untuk sesi perkuliahan teori jam 10:00.',
     urgencyReason: 'Ruangan digunakan untuk perkuliahan siang.',
@@ -504,6 +541,87 @@ const LOCAL_STORAGE_KEY = 'campus_maintenance_tasks';
 
 export const TaskContext = createContext(null);
 
+function resolveTechCategory(report) {
+  return (
+    report?.techCategory ||
+    CATEGORY_TO_TECH_MAP[report?.category] ||
+    report?.category ||
+    'Infrastructure'
+  );
+}
+
+function resolveAdminCategory(report) {
+  if (report?.category && CATEGORY_TO_TECH_MAP[report.category]) {
+    return report.category;
+  }
+  return TECH_TO_CATEGORY_MAP[report?.category] || report?.category || 'Lainnya';
+}
+
+function hydrateEvidencePhoto(evidencePhoto, reportId, idbPhotos = {}) {
+  if (typeof evidencePhoto === 'string' && evidencePhoto.startsWith('idb:')) {
+    const photoKey = evidencePhoto.replace('idb:', '');
+    return idbPhotos[photoKey] || evidencePhoto;
+  }
+  if (evidencePhoto === undefined && idbPhotos[`photo_${reportId}`]) {
+    return idbPhotos[`photo_${reportId}`];
+  }
+  return evidencePhoto ?? null;
+}
+
+function toPersistedEvidencePointer(evidencePhoto, taskId) {
+  if (typeof evidencePhoto === 'string' && evidencePhoto.startsWith('data:image/')) {
+    return `idb:photo_${taskId}`;
+  }
+  return evidencePhoto ?? null;
+}
+
+export function normalizeReportToTask(report, idbPhotos = {}) {
+  if (!report) return null;
+  const resolvedCategory = resolveTechCategory(report);
+  const resolvedReporterName =
+    report.reporterRole &&
+    report.reporterName &&
+    !report.reporterName.includes(`(${report.reporterRole})`)
+      ? `${report.reporterName} (${report.reporterRole})`
+      : report.reporterName || 'Pelapor Kampus';
+
+  return {
+    ...report,
+    id: report.id,
+    title: report.title,
+    category: resolvedCategory,
+    adminCategory: resolveAdminCategory(report),
+    location: report.location,
+    priority: report.priority || report.adminPriority || report.aiUrgency || 'Medium',
+    aiPriority: report.aiPriority || report.aiUrgency || 'Medium',
+    status: report.status || 'Pending',
+    reportedDate: report.reportedDate || '',
+    completedDate: report.completedDate ?? null,
+    completionDay: report.completionDay ?? null,
+    duration: report.duration || '',
+    reporterId: report.reporterId || null,
+    reporterName: resolvedReporterName,
+    description: report.description || '',
+    urgencyReason:
+      report.urgencyReason || report.aiSummary || 'Memerlukan penanganan teknisi fasilitas.',
+    damagePhoto: hydrateEvidencePhoto(report.damagePhoto, report.id, idbPhotos),
+    evidencePhoto: hydrateEvidencePhoto(report.evidencePhoto, report.id, idbPhotos),
+    repairNotes: report.repairNotes || '',
+    assignedByAdmin: Boolean(report.assignedByAdmin),
+    sourceReportId: report.sourceReportId || report.id,
+    assignedTechnicianId: report.assignedTechnicianId || null,
+    assignedTechnicianName:
+      report.assignedTechnicianName || report.assignedTechnician || null,
+    aiAnalysis: report.aiAnalysis || {
+      category: resolvedCategory,
+      urgency: report.aiUrgency || report.aiPriority || 'Medium',
+      summary: report.aiSummary || report.description || '',
+      recommendation: `Lakukan pemeriksaan di ${report.location || 'lokasi terkait'} untuk laporan ${report.id}.`,
+    },
+    updates: Array.isArray(report.updates) ? report.updates : [],
+  };
+}
+
 function loadStoredTasks() {
   if (typeof window === 'undefined') return INITIAL_TASKS;
   try {
@@ -511,7 +629,7 @@ function loadStoredTasks() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return parsed.map((item) => normalizeReportToTask(item));
       }
     }
   } catch (err) {
@@ -520,136 +638,339 @@ function loadStoredTasks() {
   return INITIAL_TASKS;
 }
 
+function toPersistedDamagePointer(damagePhoto, taskId) {
+  if (typeof damagePhoto === 'string' && damagePhoto.startsWith('data:image/')) {
+    return `idb:damage_${taskId}`;
+  }
+  return damagePhoto ?? null;
+}
+
+function persistTasksToLocalStorage(taskList) {
+  if (typeof window === 'undefined') return;
+  try {
+    const payloadToStore = taskList.map((t) => ({
+      ...t,
+      damagePhoto: toPersistedDamagePointer(t.damagePhoto, t.id),
+      evidencePhoto: toPersistedEvidencePointer(t.evidencePhoto, t.id),
+    }));
+    window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(payloadToStore));
+  } catch (err) {
+    console.warn('Gagal menyimpan tugas ke localStorage:', err);
+  }
+}
+
+export function buildReporterStatusNotification({
+  previousStatus,
+  newStatus,
+  report,
+  actorName,
+  notes,
+  timestamp,
+}) {
+  if (!report?.id || !report?.reporterId) return null;
+  if (previousStatus === newStatus) return null;
+  if (newStatus !== 'In Progress' && newStatus !== 'Completed') return null;
+
+  const notifType = newStatus === 'Completed' ? 'completed' : 'in_progress';
+  const cleanActor = actorName || report.assignedTechnicianName || 'Teknisi';
+  const cleanNotes = typeof notes === 'string' && notes.trim() ? ` Catatan: ${notes.trim()}` : '';
+
+  return {
+    id: `NTF-RPT-${report.id}-${notifType}`,
+    recipientId: report.reporterId,
+    targetRole: 'Reporter',
+    type: notifType,
+    title:
+      newStatus === 'Completed'
+        ? 'Perbaikan Telah Selesai'
+        : 'Perbaikan Sedang Dikerjakan',
+    message:
+      newStatus === 'Completed'
+        ? `Perbaikan untuk laporan "${report.title}" telah diselesaikan oleh teknisi ${cleanActor}.${cleanNotes}`
+        : `Teknisi ${cleanActor} mulai mengerjakan perbaikan "${report.title}".${cleanNotes}`,
+    reportId: report.id,
+    actor: cleanActor,
+    timestamp,
+    isRead: false,
+  };
+}
+
 export function TaskProvider({ children }) {
   const { user, role } = useAuth();
-  const [tasks, setTasks] = useState(loadStoredTasks);
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isUsingFallback, setIsUsingFallback] = useState(false);
+  const [error, setError] = useState('');
+  const [notificationError, setNotificationError] = useState('');
+  const [pendingNotifications, setPendingNotifications] = useState([]);
+  const inFlightNotificationKeysRef = useRef(new Set());
 
-  // Hydrate evidence photos from IndexedDB on initial mount
-  useEffect(() => {
-    let isMounted = true;
-    async function hydratePhotos() {
-      try {
-        const idbPhotos = await getAllEvidenceImages();
-        if (!isMounted || !idbPhotos || Object.keys(idbPhotos).length === 0) return;
+  const refreshTasks = useCallback(async () => {
+    let idbPhotos = {};
 
-        setTasks((prevTasks) =>
-          prevTasks.map((t) => {
-            const directKey = `photo_${t.id}`;
-            if (idbPhotos[directKey]) {
-              return { ...t, evidencePhoto: idbPhotos[directKey] };
-            }
-            if (t.evidencePhoto && typeof t.evidencePhoto === 'string' && t.evidencePhoto.startsWith('idb:')) {
-              const photoKey = t.evidencePhoto.replace('idb:', '');
-              if (idbPhotos[photoKey]) {
-                return { ...t, evidencePhoto: idbPhotos[photoKey] };
-              }
-            }
-            return t;
-          })
-        );
-      } catch (err) {
-        console.warn('Gagal memuat foto dari IndexedDB:', err);
-      }
+    try {
+      idbPhotos = await getAllEvidenceImages();
+    } catch (err) {
+      console.warn('Gagal memuat foto dari IndexedDB:', err);
     }
 
-    hydratePhotos();
-    return () => {
-      isMounted = false;
-    };
+    try {
+      const backendReports = await getAllReports();
+      const normalizedTasks = backendReports
+        .map((report) => normalizeReportToTask(report, idbPhotos))
+        .filter(Boolean);
+
+      setTasks(normalizedTasks);
+      setIsUsingFallback(false);
+      persistTasksToLocalStorage(normalizedTasks);
+      setError('');
+      return { success: true, data: normalizedTasks };
+    } catch (err) {
+      console.warn('Gagal memuat laporan dari JSON Server, menggunakan fallback cache lokal:', err);
+      const errMsg =
+        err?.message ||
+        'Gagal memuat daftar tugas dari server. Menampilkan data cache lokal.';
+      setError(errMsg);
+
+      const fallbackTasks = loadStoredTasks().map((t) => ({
+        ...t,
+        damagePhoto: hydrateEvidencePhoto(t.damagePhoto, t.id, idbPhotos),
+        evidencePhoto: hydrateEvidencePhoto(t.evidencePhoto, t.id, idbPhotos),
+      }));
+      setTasks(fallbackTasks);
+      setIsUsingFallback(true);
+      return { success: false, message: errMsg };
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Update task details (status, notes, evidence photo, timeline update)
+  // Muat ulang daftar laporan setiap sesi akun berubah (Student/Admin/Technician)
+  useEffect(() => {
+    let active = true;
+    Promise.resolve().then(() => {
+      if (active) refreshTasks();
+    });
+    return () => {
+      active = false;
+    };
+  }, [user?.identifier, refreshTasks]);
+
+  // Kirim notifikasi Reporter setelah PATCH /reports/:id sukses (anti-duplikasi & retry aman)
+  const dispatchReporterNotification = useCallback(async (payload) => {
+    if (!payload) return { sent: false, skipped: true };
+
+    const transitionKey = `${payload.recipientId}::${payload.reportId}::${payload.type}`;
+    if (inFlightNotificationKeysRef.current.has(transitionKey)) {
+      return { sent: false, skipped: true, reason: 'duplicate_in_flight' };
+    }
+
+    inFlightNotificationKeysRef.current.add(transitionKey);
+
+    try {
+      const existing = await getNotificationsByRecipientId(payload.recipientId);
+      const alreadyExists = existing.some(
+        (n) =>
+          n.id === payload.id ||
+          (n.reportId?.toLowerCase() === payload.reportId.toLowerCase() &&
+            n.type === payload.type &&
+            (n.targetRole === 'Reporter' || !n.targetRole))
+      );
+
+      if (alreadyExists) {
+        return { sent: false, skipped: true, reason: 'already_exists' };
+      }
+
+      try {
+        await createNotificationInApi(payload);
+      } catch {
+        // Coba ulang satu kali untuk gangguan sementara
+        await createNotificationInApi(payload);
+      }
+
+      setNotificationError('');
+      setPendingNotifications((prev) =>
+        prev.filter((item) => item.id !== payload.id)
+      );
+      return { sent: true };
+    } catch (notifErr) {
+      const errMsg =
+        notifErr?.message || 'Gagal mengirim notifikasi status ke Pelapor.';
+      console.error(
+        '[TaskContext] Pembaruan status laporan tersimpan, namun pengiriman notifikasi Reporter gagal:',
+        notifErr
+      );
+      setNotificationError(errMsg);
+      setPendingNotifications((prev) =>
+        prev.some((item) => item.id === payload.id) ? prev : [...prev, payload]
+      );
+      return { sent: false, error: errMsg };
+    } finally {
+      inFlightNotificationKeysRef.current.delete(transitionKey);
+    }
+  }, []);
+
+  const retryPendingNotifications = useCallback(async () => {
+    if (pendingNotifications.length === 0) return { retried: 0, remaining: 0 };
+    let sentCount = 0;
+
+    for (const item of pendingNotifications) {
+      const res = await dispatchReporterNotification(item);
+      if (res.sent || res.skipped) sentCount += 1;
+    }
+
+    return {
+      retried: sentCount,
+      remaining: Math.max(0, pendingNotifications.length - sentCount),
+    };
+  }, [pendingNotifications, dispatchReporterNotification]);
+
+  // Update task details (status, notes, evidence photo, timeline update) via PATCH /reports/:id
   const updateTask = async (taskId, updates) => {
+    const currentTask = tasks.find((t) => t.id.toLowerCase() === taskId.toLowerCase());
+    if (!currentTask) {
+      throw new Error(`Tugas dengan ID "${taskId}" tidak ditemukan.`);
+    }
+
+    const previousStatus = currentTask.status;
     let evidencePhotoValue = updates.evidencePhoto;
 
-    // Save base64 image to IndexedDB to keep localStorage footprint lightweight
+    // Simpan foto base64 ke IndexedDB agar ukuran db.json dan localStorage tetap ringan
     if (
       evidencePhotoValue &&
       typeof evidencePhotoValue === 'string' &&
       evidencePhotoValue.startsWith('data:image/')
     ) {
-      const photoKey = `photo_${taskId}`;
-      await saveEvidenceImage(photoKey, evidencePhotoValue);
+      const photoKey = `photo_${currentTask.id}`;
+      const savedToIdb = await saveEvidenceImage(photoKey, evidencePhotoValue);
+      if (!savedToIdb) {
+        throw new Error('Gagal menyimpan foto bukti ke penyimpanan lokal browser (IndexedDB).');
+      }
     }
 
-    setTasks((prevTasks) => {
-      const updated = prevTasks.map((task) => {
-        if (task.id.toLowerCase() !== taskId.toLowerCase()) return task;
+    const newStatus = updates.status || currentTask.status;
+    const isNowCompleted = newStatus === 'Completed';
 
-        const newStatus = updates.status || task.status;
-        const isNowCompleted = newStatus === 'Completed';
+    const now = new Date();
+    const formattedTimestamp = formatWitaTimestamp(now);
+    const defaultCompletedDate = formattedTimestamp;
+    const defaultCompletionDay = formatWitaIsoDate(now);
 
-        const now = new Date();
-        const defaultCompletedDate = `${now.getDate()} Nov 2026, ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-        const defaultCompletionDay = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const resolvedRepairNotes =
+      updates.repairNotes !== undefined ? updates.repairNotes : currentTask.repairNotes;
 
-        const updatedTimeline = updates.newUpdate
-          ? [updates.newUpdate, ...(task.updates || [])]
-          : updates.updates || task.updates || [];
+    const resolvedCompletedDate = isNowCompleted
+      ? updates.completedDate || currentTask.completedDate || defaultCompletedDate
+      : null;
 
-        return {
-          ...task,
-          ...updates,
-          status: newStatus,
-          repairNotes:
-            updates.repairNotes !== undefined ? updates.repairNotes : task.repairNotes,
-          evidencePhoto:
-            evidencePhotoValue !== undefined ? evidencePhotoValue : task.evidencePhoto,
-          completedDate: isNowCompleted
-            ? updates.completedDate || task.completedDate || defaultCompletedDate
-            : updates.completedDate !== undefined
-            ? updates.completedDate
-            : task.completedDate,
-          completionDay: isNowCompleted
-            ? updates.completionDay || task.completionDay || defaultCompletionDay
-            : updates.completionDay !== undefined
-            ? updates.completionDay
-            : task.completionDay,
-          duration:
-            updates.duration ||
-            task.duration ||
-            (isNowCompleted ? '1 jam' : task.duration),
-          updates: updatedTimeline,
-        };
+    const resolvedCompletionDay = isNowCompleted
+      ? updates.completionDay || currentTask.completionDay || defaultCompletionDay
+      : null;
+
+    const resolvedDuration = isNowCompleted
+      ? updates.duration || currentTask.duration || '1 jam'
+      : '';
+
+    const updatedTimeline = updates.newUpdate
+      ? [updates.newUpdate, ...(currentTask.updates || [])]
+      : updates.updates || currentTask.updates || [];
+
+    const persistedEvidencePhoto =
+      evidencePhotoValue !== undefined
+        ? toPersistedEvidencePointer(evidencePhotoValue, currentTask.id)
+        : toPersistedEvidencePointer(currentTask.evidencePhoto, currentTask.id);
+
+    const patchPayload = {
+      status: newStatus,
+      repairNotes: resolvedRepairNotes,
+      evidencePhoto: persistedEvidencePhoto,
+      completedDate: resolvedCompletedDate,
+      completionDay: resolvedCompletionDay,
+      duration: resolvedDuration,
+      updates: updatedTimeline,
+      statusNote:
+        updates.newUpdate?.notes || resolvedRepairNotes || currentTask.statusNote || '',
+    };
+
+    let mergedTask;
+    try {
+      // Kirim perubahan ke JSON Server terlebih dahulu sebelum mengonfirmasi pembaruan UI
+      const patchedReport = await patchReportInApi(currentTask.id, patchPayload);
+      const idbPhotos =
+        typeof evidencePhotoValue === 'string' && evidencePhotoValue.startsWith('data:image/')
+          ? { [`photo_${currentTask.id}`]: evidencePhotoValue }
+          : typeof currentTask.evidencePhoto === 'string' &&
+            currentTask.evidencePhoto.startsWith('data:image/') &&
+            evidencePhotoValue === undefined
+          ? { [`photo_${currentTask.id}`]: currentTask.evidencePhoto }
+          : {};
+
+      mergedTask = normalizeReportToTask(
+        {
+          ...currentTask,
+          ...patchedReport,
+          ...patchPayload,
+        },
+        idbPhotos
+      );
+
+      setTasks((prevTasks) => {
+        const nextTasks = prevTasks.map((task) =>
+          task.id.toLowerCase() === currentTask.id.toLowerCase() ? mergedTask : task
+        );
+        persistTasksToLocalStorage(nextTasks);
+        return nextTasks;
       });
+      setError('');
+    } catch (err) {
+      const errorMessage =
+        err?.message || 'Gagal menyimpan pembaruan tugas ke server backend.';
+      setError(errorMessage);
+      throw err;
+    }
 
-      // Synchronize with localStorage safely (replacing large data URLs with IDB pointers)
-      try {
-        const payloadToStore = updated.map((t) => {
-          if (
-            t.evidencePhoto &&
-            typeof t.evidencePhoto === 'string' &&
-            t.evidencePhoto.startsWith('data:image/')
-          ) {
-            return {
-              ...t,
-              evidencePhoto: `idb:photo_${t.id}`,
-            };
-          }
-          return t;
-        });
-        window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(payloadToStore));
-      } catch (err) {
-        console.warn('Gagal menyimpan tugas ke localStorage:', err);
-      }
-
-      return updated;
+    // Buat notifikasi Reporter HANYA jika PATCH berhasil & status benar-benar berubah ke In Progress / Completed
+    const notifPayload = buildReporterStatusNotification({
+      previousStatus,
+      newStatus,
+      report: mergedTask,
+      actorName: user?.name || mergedTask.assignedTechnicianName,
+      notes: updates.newUpdate?.notes || resolvedRepairNotes,
+      timestamp: updates.newUpdate?.timestamp || formattedTimestamp,
     });
+
+    if (notifPayload) {
+      await dispatchReporterNotification(notifPayload);
+    }
+
+    return mergedTask;
   };
 
-  // Tambahkan tugas baru hasil penugasan Admin agar langsung tampil pada modul Teknisi
+  // Tambahkan atau perbarui tugas hasil penugasan Admin dan sinkronkan ke JSON Server
   const assignTaskFromAdmin = (report, technician, adminName = 'Admin Sarana & Fasilitas') => {
     if (!report || !technician) return;
 
-    const now = new Date();
-    const formattedDate = `${now.getDate()} Nov 2026, ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const formattedDate = formatWitaTimestamp(new Date());
     const techCategory = CATEGORY_TO_TECH_MAP[report.category] || report.category || 'Infrastructure';
     const finalPriority = report.adminPriority || report.aiUrgency || 'Medium';
+
+    const assignmentUpdate = {
+      id: `upd-${Date.now()}`,
+      timestamp: formattedDate,
+      author: adminName,
+      status: 'Assigned',
+      notes: `Laporan diverifikasi dan ditugaskan kepada ${technician.name} (${technician.id}) dengan prioritas ${finalPriority}.`,
+    };
+
+    const existingTask = tasks.find(
+      (t) => t.id.toLowerCase() === report.id.toLowerCase()
+    );
 
     const newTask = {
       id: report.id,
       title: report.title,
       category: techCategory,
+      adminCategory: resolveAdminCategory(report),
       location: report.location,
       priority: finalPriority,
       aiPriority: report.aiUrgency || 'Medium',
@@ -658,7 +979,11 @@ export function TaskProvider({ children }) {
       completedDate: null,
       completionDay: null,
       duration: '',
-      reporterName: `${report.reporterName} (${report.reporterRole})`,
+      reporterId: report.reporterId || null,
+      reporterName: report.reporterRole
+        ? `${report.reporterName} (${report.reporterRole})`
+        : report.reporterName,
+      reporterRole: report.reporterRole || '',
       description: report.description,
       urgencyReason: report.aiSummary || 'Memerlukan penanganan teknisi fasilitas.',
       damagePhoto: report.damagePhoto || null,
@@ -674,16 +999,13 @@ export function TaskProvider({ children }) {
         summary: report.aiSummary || report.description,
         recommendation: `Lakukan pemeriksaan di ${report.location} untuk laporan ${report.id}.`,
       },
-      updates: [
-        {
-          id: `upd-${Date.now()}`,
-          timestamp: formattedDate,
-          author: adminName,
-          status: 'Assigned',
-          notes: `Laporan diverifikasi dan ditugaskan kepada ${technician.name} (${technician.id}) dengan prioritas ${finalPriority}.`,
-        },
-      ],
+      updates: [assignmentUpdate],
     };
+
+    const nextUpdates =
+      existingTask && existingTask.assignedByAdmin
+        ? [assignmentUpdate, ...(existingTask.updates || [])]
+        : newTask.updates;
 
     setTasks((prevTasks) => {
       const exists = prevTasks.some((t) => t.id.toLowerCase() === report.id.toLowerCase());
@@ -699,43 +1021,59 @@ export function TaskProvider({ children }) {
                     sourceReportId: report.id,
                     assignedTechnicianId: technician.id,
                     assignedTechnicianName: technician.name,
-                    updates: [newTask.updates[0], ...(t.updates || [])],
+                    updates: [assignmentUpdate, ...(t.updates || [])],
                   }
                 : newTask
               : t
           )
         : [newTask, ...prevTasks];
 
-      try {
-        const payloadToStore = nextTasks.map((t) => {
-          if (
-            t.evidencePhoto &&
-            typeof t.evidencePhoto === 'string' &&
-            t.evidencePhoto.startsWith('data:image/')
-          ) {
-            return { ...t, evidencePhoto: `idb:photo_${t.id}` };
-          }
-          return t;
-        });
-        window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(payloadToStore));
-      } catch (err) {
-        console.warn('Gagal menyimpan penugasan ke localStorage:', err);
-      }
-
+      persistTasksToLocalStorage(nextTasks);
       return nextTasks;
+    });
+
+    // Persist assignment ke backend collection reports
+    const assignmentPatch = {
+      status: 'Assigned',
+      adminPriority: finalPriority,
+      priority: finalPriority,
+      assignedByAdmin: true,
+      assignedTechnicianId: technician.id,
+      assignedTechnician: technician.name,
+      statusNote: assignmentUpdate.notes,
+      updates: nextUpdates,
+    };
+
+    patchReportInApi(report.id, assignmentPatch).catch(async (patchErr) => {
+      if (patchErr?.status === 404) {
+        try {
+          await createReportInApi({
+            ...report,
+            techCategory,
+            ...assignmentPatch,
+          });
+          return;
+        } catch (createErr) {
+          console.warn('Gagal membuat penugasan di JSON Server:', createErr);
+        }
+      } else {
+        console.warn('Gagal menyinkronkan penugasan ke JSON Server:', patchErr);
+      }
     });
   };
 
-  // Filter tugas sesuai akun teknisi yang login (tugas bawaan tanpa assignedTechnicianId milik TECH-001)
+  // Filter tugas sesuai akun teknisi yang login (hanya status Assigned/In Progress/Completed milik teknisi bersangkutan)
   const visibleTasks = useMemo(() => {
     if (role !== 'Technician' || !user?.identifier) {
       return tasks;
     }
-    return tasks.filter((t) =>
-      t.assignedTechnicianId
-        ? t.assignedTechnicianId.toLowerCase() === user.identifier.toLowerCase()
-        : user.identifier === 'TECH-001'
-    );
+    const userTechId = user.identifier.toLowerCase();
+    return tasks.filter((t) => {
+      if (!TECHNICIAN_TASK_STATUSES.has(t.status)) return false;
+      return t.assignedTechnicianId
+        ? t.assignedTechnicianId.toLowerCase() === userTechId
+        : userTechId === 'tech-001';
+    });
   }, [tasks, role, user]);
 
   // Helper to fetch task by ID
@@ -761,6 +1099,7 @@ export function TaskProvider({ children }) {
       console.warn(err);
     }
     setTasks(INITIAL_TASKS);
+    setError('');
   };
 
   const value = {
@@ -768,9 +1107,16 @@ export function TaskProvider({ children }) {
     allTasks: tasks,
     activeTasks,
     completedTasks,
+    loading,
+    isUsingFallback,
+    error,
+    notificationError,
+    pendingNotifications,
     getTaskById,
     updateTask,
     assignTaskFromAdmin,
+    refreshTasks,
+    retryPendingNotifications,
     resetTasks,
   };
 

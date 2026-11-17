@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Bell,
@@ -20,14 +20,28 @@ import {
   BookOpen,
   Briefcase,
   Info,
+  AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import {
+  formatWitaDateOnly,
+  parseWitaTimestampMs,
+} from '../../utils/dateFormat';
+import {
+  getNotificationsByRecipientId,
+  markNotificationAsRead as markNotificationAsReadInApi,
+} from '../../services/activityNotificationService';
 import {
   MOCK_REPORTER_NOTIFICATIONS,
   filterNotificationsByReporter,
 } from '../../data/mockReporterNotifications';
 
 function groupNotificationsByTime(list) {
+  const now = new Date();
+  const todayPrefix = formatWitaDateOnly(now);
+  const yesterdayDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const yesterdayPrefix = formatWitaDateOnly(yesterdayDate);
+
   const groups = {
     'Hari Ini': [],
     Kemarin: [],
@@ -36,9 +50,9 @@ function groupNotificationsByTime(list) {
 
   list.forEach((item) => {
     const ts = item.timestamp || '';
-    if (ts.startsWith('16 Nov 2026')) {
+    if (ts.startsWith(todayPrefix)) {
       groups['Hari Ini'].push(item);
-    } else if (ts.startsWith('15 Nov 2026')) {
+    } else if (ts.startsWith(yesterdayPrefix)) {
       groups.Kemarin.push(item);
     } else {
       groups.Sebelumnya.push(item);
@@ -55,19 +69,62 @@ function groupNotificationsByTime(list) {
 export default function Notifications() {
   const { user, role } = useAuth();
 
-  // State notifikasi khusus milik pelapor yang sedang login
-  const [prevUserId, setPrevUserId] = useState(user?.identifier);
-  const [notifications, setNotifications] = useState(() =>
-    filterNotificationsByReporter(MOCK_REPORTER_NOTIFICATIONS, user)
-  );
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [activeFilter, setActiveFilter] = useState('ALL');
 
-  // Sinkronisasi daftar notifikasi jika akun pengguna berganti
-  if (user?.identifier !== prevUserId) {
-    setPrevUserId(user?.identifier);
-    setNotifications(filterNotificationsByReporter(MOCK_REPORTER_NOTIFICATIONS, user));
-    setActiveFilter('ALL');
-  }
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchNotifications() {
+      if (!user?.identifier) {
+        setNotifications([]);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setActiveFilter('ALL');
+
+      try {
+        const apiNotifs = await getNotificationsByRecipientId(user.identifier);
+        if (!isMounted) return;
+
+        const userId = user.identifier.toLowerCase();
+        const ownedNotifs = apiNotifs
+          .filter((item) => {
+            const targetId = (item.recipientId || item.reporterId || '').toLowerCase();
+            return targetId === userId;
+          })
+          .sort(
+            (a, b) =>
+              parseWitaTimestampMs(b.timestamp) - parseWitaTimestampMs(a.timestamp)
+          );
+
+        setNotifications(ownedNotifs);
+        setError('');
+      } catch (err) {
+        console.warn('Gagal memuat notifikasi Pelapor dari JSON Server, menggunakan fallback:', err);
+        if (!isMounted) return;
+
+        setNotifications(filterNotificationsByReporter(MOCK_REPORTER_NOTIFICATIONS, user));
+        setError(
+          err?.message ||
+            'Tidak dapat terhubung ke server backend. Menampilkan data cache lokal.'
+        );
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchNotifications();
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
 
   // Metadata identitas role
   const roleMeta = useMemo(() => {
@@ -108,16 +165,39 @@ export default function Notifications() {
     return groupNotificationsByTime(filteredNotifications);
   }, [filteredNotifications]);
 
-  // Aksi: Tandai satu notifikasi sudah dibaca
-  const handleMarkAsRead = (notifId) => {
-    setNotifications((prev) =>
-      prev.map((item) => (item.id === notifId ? { ...item, isRead: true } : item))
-    );
+  // Aksi: Tandai satu notifikasi sudah dibaca via PATCH /notifications/:id
+  const handleMarkAsRead = async (notifId) => {
+    try {
+      await markNotificationAsReadInApi(notifId);
+      setNotifications((prev) =>
+        prev.map((item) => (item.id === notifId ? { ...item, isRead: true } : item))
+      );
+      setError('');
+    } catch (err) {
+      setError(
+        err?.message ||
+          'Gagal memperbarui status baca notifikasi ke server backend.'
+      );
+    }
   };
 
-  // Aksi: Tandai seluruh notifikasi sudah dibaca
-  const handleMarkAllAsRead = () => {
-    setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+  // Aksi: Tandai seluruh notifikasi sudah dibaca via PATCH /notifications/:id
+  const handleMarkAllAsRead = async () => {
+    const unreadItems = notifications.filter((item) => !item.isRead);
+    if (unreadItems.length === 0) return;
+
+    try {
+      await Promise.all(
+        unreadItems.map((item) => markNotificationAsReadInApi(item.id))
+      );
+      setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+      setError('');
+    } catch (err) {
+      setError(
+        err?.message ||
+          'Gagal menandai seluruh notifikasi sebagai dibaca di server backend.'
+      );
+    }
   };
 
   // Konfigurasi ikon & aksen warna untuk 7 jenis notifikasi
@@ -296,8 +376,23 @@ export default function Notifications() {
           </span>
         </div>
 
+        {/* Feedback error jaringan / server */}
+        {error && (
+          <div
+            role="alert"
+            className="mx-5 mt-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center space-x-2"
+          >
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
         {/* Grouped Inbox Message List */}
-        {filteredNotifications.length === 0 ? (
+        {loading ? (
+          <div className="py-14 px-6 text-center text-xs text-slate-500">
+            Memuat notifikasi dari server...
+          </div>
+        ) : filteredNotifications.length === 0 ? (
           /* Empty State inside Inbox */
           <div className="py-14 px-6 text-center">
             <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 mx-auto flex items-center justify-center mb-3">
@@ -453,11 +548,11 @@ export default function Notifications() {
         )}
       </section>
 
-      {/* Catatan Prototipe */}
+      {/* Info sinkronisasi server */}
       <div className="rounded-2xl bg-white/85 border-[1.5px] border-indigo-200/75 px-4 py-3 text-[11px] text-slate-500 flex items-center space-x-2">
         <Info className="w-4 h-4 text-indigo-500 shrink-0" />
         <span>
-          Data notifikasi contoh frontend (status baca tersimpan pada sesi lokal).
+          Status notifikasi disinkronkan dengan database sistem pemeliharaan kampus.
         </span>
       </div>
     </div>

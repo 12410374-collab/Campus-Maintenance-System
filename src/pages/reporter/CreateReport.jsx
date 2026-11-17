@@ -27,6 +27,31 @@ import {
   ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useTasks } from '../../context/TaskContext';
+import { useAdmin } from '../../context/AdminContext';
+import { saveEvidenceImage } from '../../utils/imageStorage';
+import { formatWitaTimestamp, formatWitaIsoDate } from '../../utils/dateFormat';
+import { getAllReports, createReport } from '../../services/reportService';
+import {
+  createActivity,
+  createNotification,
+} from '../../services/activityNotificationService';
+
+const URGENCY_TO_PRIORITY_MAP = {
+  Rendah: 'Low',
+  Sedang: 'Medium',
+  Tinggi: 'High',
+  Kritis: 'Critical',
+};
+
+const CATEGORY_TO_TECH_MAP = {
+  Kelistrikan: 'Electrical',
+  'Plumbing / Sanitasi': 'Plumbing',
+  Elektronik: 'Electronics',
+  Furniture: 'Furniture',
+  'Infrastruktur / Bangunan': 'Infrastructure',
+  Lainnya: 'Other',
+};
 
 const CATEGORIES = [
   { id: 'Kelistrikan', label: 'Kelistrikan', icon: Zap, tint: 'text-indigo-600 bg-indigo-50 border-indigo-200' },
@@ -71,27 +96,25 @@ const URGENCY_LEVELS = [
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
-function buildSubmissionPreview(formData, user, roleLabel) {
-  const now = new Date();
-  const formattedTime = now.toLocaleString('id-ID', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+function generateNextReportId(existingReports = []) {
+  const year = new Date().getFullYear();
+  let maxNum = 112;
+  existingReports.forEach((item) => {
+    const match = typeof item?.id === 'string' && item.id.match(/^RPT-\d{4}-(\d+)$/i);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (!Number.isNaN(num) && num > maxNum) {
+        maxNum = num;
+      }
+    }
   });
-  return {
-    referenceCode: `DRAFT-${String(now.getTime()).slice(-6)}`,
-    submittedAt: formattedTime,
-    reporterName: user?.name || 'Pengguna',
-    reporterId: user?.identifier || '-',
-    reporterRole: roleLabel,
-    ...formData,
-  };
+  return `RPT-${year}-${String(maxNum + 1).padStart(4, '0')}`;
 }
 
 export default function CreateReport() {
   const { user, role } = useAuth();
+  const { refreshTasks } = useTasks();
+  const { refreshAdminData } = useAdmin();
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
 
@@ -233,8 +256,8 @@ export default function CreateReport() {
     return Object.keys(errors).length === 0;
   };
 
-  // Submit handler
-  const handleSubmit = (e) => {
+  // Submit handler terhubung ke POST /reports + sinkronisasi lintas Context
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setFormAlert('');
 
@@ -243,27 +266,156 @@ export default function CreateReport() {
       return;
     }
 
+    if (!user?.identifier) {
+      setFormAlert('Sesi pengguna tidak ditemukan. Silakan masuk ulang terlebih dahulu.');
+      return;
+    }
+
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      const previewData = buildSubmissionPreview(
-        {
-          title: title.trim(),
-          category,
-          location: location.trim(),
-          description: description.trim(),
-          urgency,
-          hasPhoto: Boolean(photoPreview),
-          photoName: photoFile?.name || null,
-          photoPreview,
-        },
-        user,
-        roleMeta.label
-      );
+    try {
+      const existingReports = await getAllReports();
+      const reportId = generateNextReportId(existingReports);
 
-      setSubmittedPreview(previewData);
+      const now = new Date();
+      const reportedDate = formatWitaTimestamp(now);
+      const reportedIsoDate = formatWitaIsoDate(now);
+      const mappedPriority = URGENCY_TO_PRIORITY_MAP[urgency] || 'Medium';
+      const mappedTechCategory = CATEGORY_TO_TECH_MAP[category] || 'Other';
+
+      // Simpan foto kerusakan di IndexedDB terlebih dahulu agar tidak mengirim base64 besar ke db.json
+      let persistedDamagePhoto = null;
+      if (photoPreview && typeof photoPreview === 'string' && photoPreview.startsWith('data:image/')) {
+        const damageKey = `damage_${reportId}`;
+        const savedImage = await saveEvidenceImage(damageKey, photoPreview);
+        if (!savedImage) {
+          throw new Error('Gagal menyimpan foto kerusakan ke penyimpanan lokal browser.');
+        }
+        persistedDamagePhoto = `idb:${damageKey}`;
+      }
+
+      const cleanTitle = title.trim();
+      const cleanLocation = location.trim();
+      const cleanDescription = description.trim();
+      const aiSummary = `Laporan baru kategori ${category} dengan tingkat urgensi ${urgency} di ${cleanLocation}.`;
+
+      const reportPayload = {
+        id: reportId,
+        title: cleanTitle,
+        category,
+        techCategory: mappedTechCategory,
+        location: cleanLocation,
+        reporterId: user.identifier,
+        reporterName: user.name || 'Pelapor Kampus',
+        reporterRole: roleMeta.label,
+        reportedDate,
+        reportedIsoDate,
+        status: 'Pending',
+        aiUrgency: mappedPriority,
+        adminPriority: null,
+        priority: mappedPriority,
+        urgency,
+        assignedTechnicianId: null,
+        assignedTechnician: null,
+        assignedByAdmin: false,
+        rejectionReason: null,
+        statusNote: 'Laporan telah diterima sistem dan sedang menunggu verifikasi Admin Fasilitas.',
+        damagePhoto: persistedDamagePhoto,
+        evidencePhoto: null,
+        aiSummary,
+        aiAnalysis: {
+          category: mappedTechCategory,
+          urgency: mappedPriority,
+          summary: aiSummary,
+          recommendation: `Tinjau laporan ${reportId} di ${cleanLocation} dan tugaskan teknisi terkait.`,
+        },
+        description: cleanDescription,
+        repairNotes: '',
+        completedDate: null,
+        completionDay: null,
+        duration: '',
+        updates: [
+          {
+            id: `upd-${Date.now()}`,
+            timestamp: reportedDate,
+            author: `${user.name || 'Pelapor'} (${roleMeta.label})`,
+            status: 'Pending',
+            notes: 'Laporan kerusakan dikirim oleh pelapor dan menunggu verifikasi Admin.',
+          },
+        ],
+      };
+
+      // Kirim ke JSON Server — jangan tampilkan berhasil jika POST gagal
+      const createdReport = await createReport(reportPayload);
+
+      // Catat aktivitas masuk & notifikasi Admin + Pelapor secara non-blocking
+      const stamp = Date.now();
+      await Promise.allSettled([
+        createActivity({
+          id: `ACT-${stamp}`,
+          type: 'incoming',
+          title: 'Laporan baru diterima',
+          detail: `${cleanTitle} (${cleanLocation}) menunggu verifikasi Admin.`,
+          reportId: createdReport.id,
+          actor: `${user.name} (${roleMeta.label})`,
+          timestamp: reportedDate,
+        }),
+        createNotification({
+          id: `NTF-ADM-${stamp}`,
+          recipientId: 'admin',
+          targetRole: 'Admin',
+          type: mappedPriority === 'Critical' ? 'critical_ai' : 'incoming',
+          title:
+            mappedPriority === 'Critical'
+              ? 'Laporan baru dengan urgensi kritis'
+              : 'Laporan baru diterima',
+          message: `${cleanTitle} (${cleanLocation}) diajukan oleh ${user.name}.`,
+          reportId: createdReport.id,
+          actor: `${user.name} (${roleMeta.label})`,
+          timestamp: reportedDate,
+          isRead: false,
+        }),
+        createNotification({
+          id: `NTF-RPT-${stamp + 1}`,
+          recipientId: user.identifier,
+          targetRole: 'Reporter',
+          type: 'submitted',
+          title: 'Laporan Berhasil Dikirim',
+          message: `Laporan "${cleanTitle}" telah diterima sistem dengan status Pending menunggu verifikasi Admin.`,
+          reportId: createdReport.id,
+          actor: user.name || 'Pelapor',
+          timestamp: reportedDate,
+          isRead: false,
+        }),
+      ]);
+
+      // Sinkronkan TaskContext & AdminContext dari sumber tunggal db.json tanpa duplikasi
+      await Promise.allSettled([refreshTasks(), refreshAdminData()]);
+
+      setSubmittedPreview({
+        referenceCode: createdReport.id,
+        submittedAt: createdReport.reportedDate || reportedDate,
+        reporterName: createdReport.reporterName,
+        reporterId: createdReport.reporterId,
+        reporterRole: roleMeta.label,
+        title: createdReport.title,
+        category: createdReport.category,
+        location: createdReport.location,
+        description: createdReport.description,
+        urgency,
+        hasPhoto: Boolean(photoPreview),
+        photoName: photoFile?.name || null,
+        photoPreview,
+      });
+    } catch (err) {
+      console.error('Gagal mengirim laporan ke backend:', err);
+      setFormAlert(
+        err?.message ||
+          'Gagal mengirim laporan ke server backend. Pastikan JSON Server sedang berjalan dan coba lagi.'
+      );
+    } finally {
       setIsSubmitting(false);
-    }, 350);
+    }
   };
 
   const handleResetForm = () => {
@@ -318,10 +470,10 @@ export default function CreateReport() {
 
             <div>
               <h2 className="text-xl font-extrabold text-slate-900">
-                Laporan Berhasil Divalidasi & Siap Dikirim
+                Laporan Berhasil Dikirim
               </h2>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                Formulir laporan kerusakan Anda telah diverifikasi pada sisi antarmuka (mode prototipe frontend — belum tersimpan ke server/database).
+                Laporan kerusakan Anda telah tersimpan di sistem dengan status Pending dan siap diverifikasi oleh Admin Sarana &amp; Prasarana.
               </p>
             </div>
 

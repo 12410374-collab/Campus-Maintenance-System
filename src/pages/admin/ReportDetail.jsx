@@ -91,7 +91,13 @@ export default function AdminReportDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { getReportById, approveReport, rejectReport, updateReportPriority } = useAdmin();
+  const {
+    getReportById,
+    approveReport,
+    rejectReport,
+    updateReportPriority,
+    loading,
+  } = useAdmin();
 
   const report = getReportById(id);
 
@@ -109,6 +115,15 @@ export default function AdminReportDetail() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [rejectionError, setRejectionError] = useState('');
+
+  if (loading && !report) {
+    return (
+      <div className="rounded-3xl bg-white border-[1.5px] border-slate-300 p-12 text-center shadow-sm">
+        <div className="w-8 h-8 border-3 border-[#2563EB] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <p className="text-xs text-slate-500 font-medium">Memuat detail laporan dari server...</p>
+      </div>
+    );
+  }
 
   if (!report) {
     return (
@@ -136,18 +151,18 @@ export default function AdminReportDetail() {
   const statusMeta = STATUS_META[report.status] || STATUS_META.Pending;
   const StatusIcon = statusMeta.icon;
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     setFeedback(null);
-    const result = approveReport(report.id, selectedPriority, user?.name);
+    const result = await approveReport(report.id, selectedPriority, user?.name);
     setFeedback({
       type: result.success ? 'success' : 'error',
       text: result.message,
     });
   };
 
-  const handleSavePriority = () => {
+  const handleSavePriority = async () => {
     setFeedback(null);
-    const result = updateReportPriority(report.id, selectedPriority, user?.name);
+    const result = await updateReportPriority(report.id, selectedPriority, user?.name);
     setFeedback({
       type: result.success ? 'success' : 'error',
       text: result.message,
@@ -160,14 +175,14 @@ export default function AdminReportDetail() {
     setShowRejectModal(true);
   };
 
-  const handleConfirmReject = (e) => {
+  const handleConfirmReject = async (e) => {
     e.preventDefault();
     if (!rejectionReason.trim()) {
       setRejectionError('Alasan penolakan wajib diisi sebelum mengonfirmasi.');
       return;
     }
 
-    const result = rejectReport(report.id, rejectionReason, user?.name);
+    const result = await rejectReport(report.id, rejectionReason, user?.name);
     if (!result.success) {
       setRejectionError(result.message);
       return;
