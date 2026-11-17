@@ -20,10 +20,21 @@ import {
   Check,
   X,
   Info,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAdmin } from '../../context/AdminContext';
 import { ADMIN_PRIORITY_OPTIONS } from '../../data/mockAdminReports';
+
+const TECH_CATEGORY_LABELS_ID = {
+  Electrical: 'Kelistrikan',
+  Plumbing: 'Plumbing / Sanitasi',
+  Electronics: 'Elektronik',
+  Furniture: 'Furniture',
+  Infrastructure: 'Infrastruktur / Bangunan',
+  Other: 'Lainnya',
+};
 
 const STATUS_META = {
   Pending: {
@@ -96,6 +107,7 @@ export default function AdminReportDetail() {
     approveReport,
     rejectReport,
     updateReportPriority,
+    reanalyzeReportWithAi,
     loading,
   } = useAdmin();
 
@@ -112,6 +124,7 @@ export default function AdminReportDetail() {
   }
 
   const [feedback, setFeedback] = useState(null);
+  const [isReanalyzing, setIsReanalyzing] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [rejectionError, setRejectionError] = useState('');
@@ -150,6 +163,48 @@ export default function AdminReportDetail() {
   const isPending = report.status === 'Pending';
   const statusMeta = STATUS_META[report.status] || STATUS_META.Pending;
   const StatusIcon = statusMeta.icon;
+
+  const aiAnalysisData = report.aiAnalysis || {};
+  const aiRecommendedCategory =
+    aiAnalysisData.adminCategory ||
+    TECH_CATEGORY_LABELS_ID[aiAnalysisData.category] ||
+    aiAnalysisData.category ||
+    report.category;
+  const aiSummaryText =
+    report.aiSummary || aiAnalysisData.summary || 'Ringkasan analisis AI belum tersedia.';
+  const aiUrgencyReason =
+    aiAnalysisData.urgencyReason ||
+    report.urgencyReason ||
+    'Alasan rinci rekomendasi urgensi belum tersedia pada data laporan ini.';
+  const aiRecommendationAction =
+    aiAnalysisData.recommendation ||
+    'Lakukan pemeriksaan awal kondisi fasilitas di lokasi sesuai deskripsi laporan.';
+  const isAiInsufficientInfo = Boolean(aiAnalysisData.insufficientInfo);
+  const isGeminiSource =
+    aiAnalysisData.source === 'gemini' ||
+    (Boolean(aiAnalysisData.model) && aiAnalysisData.source !== 'fallback');
+  const aiSourceLabel = isGeminiSource
+    ? `Gemini AI${aiAnalysisData.model ? ` (${aiAnalysisData.model})` : ''}`
+    : 'Fallback Sistem';
+
+  const handleFollowAiRecommendation = () => {
+    if (isLocked || !report.aiUrgency) return;
+    setSelectedPriority(report.aiUrgency);
+  };
+
+  const handleReanalyzeAi = async () => {
+    setFeedback(null);
+    setIsReanalyzing(true);
+    try {
+      const result = await reanalyzeReportWithAi(report.id);
+      setFeedback({
+        type: result.success ? 'success' : 'error',
+        text: result.message,
+      });
+    } finally {
+      setIsReanalyzing(false);
+    }
+  };
 
   const handleApprove = async () => {
     setFeedback(null);
@@ -352,22 +407,100 @@ export default function AdminReportDetail() {
 
           {/* AI Analysis Panel (Midnight Navy Surface) */}
           <section className="rounded-3xl bg-[#101A30] border border-violet-500/35 text-[#F8FAFC] p-5 sm:p-6 shadow-xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-white/10">
               <div className="flex items-center space-x-2">
                 <div className="w-8 h-8 rounded-xl bg-[#8B5CF6]/20 border border-[#8B5CF6]/40 text-violet-300 flex items-center justify-center">
                   <Sparkles className="w-4 h-4" />
                 </div>
-                <h2 className="text-sm font-bold text-white">Analisis AI</h2>
+                <div>
+                  <h2 className="text-sm font-bold text-white">Analisis AI</h2>
+                  <p className="text-[10.5px] text-slate-400">
+                    Sumber: <span className="font-semibold text-cyan-300">{aiSourceLabel}</span>
+                  </p>
+                </div>
               </div>
 
-              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-violet-500/20 text-violet-200 border border-violet-400/35">
-                Rekomendasi Tingkat Urgensi AI: {PRIORITY_LABELS[report.aiUrgency] || report.aiUrgency}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`px-2.5 py-1 rounded-full text-[10.5px] font-bold border ${
+                    isGeminiSource
+                      ? 'bg-emerald-500/15 text-emerald-200 border-emerald-400/35'
+                      : 'bg-amber-500/15 text-amber-200 border-amber-400/35'
+                  }`}
+                >
+                  {isGeminiSource ? 'Gemini AI' : 'Fallback'}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleReanalyzeAi}
+                  disabled={isReanalyzing}
+                  className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold text-white bg-white/10 hover:bg-white/15 border border-white/15 transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {isReanalyzing ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-3 h-3 text-[#06B6D4]" />
+                  )}
+                  <span>{isReanalyzing ? 'Menganalisis...' : 'Analisis Ulang AI'}</span>
+                </button>
+              </div>
             </div>
 
-            <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
-              {report.aiSummary}
-            </p>
+            {isAiInsufficientInfo && (
+              <div className="p-3 rounded-2xl bg-amber-500/15 border border-amber-400/35 text-xs text-amber-200 flex items-start space-x-2">
+                <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+                <span>
+                  Informasi laporan belum lengkap. Disarankan konfirmasi atau inspeksi manual di lokasi sebelum penugasan.
+                </span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="p-3 rounded-2xl bg-[#080D1B]/75 border border-white/10">
+                <p className="text-[10px] font-bold uppercase text-slate-400">
+                  Kategori Rekomendasi AI
+                </p>
+                <p className="text-sm font-bold text-white mt-1">{aiRecommendedCategory}</p>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-[#080D1B]/75 border border-violet-400/30">
+                <p className="text-[10px] font-bold uppercase text-violet-300">
+                  Rekomendasi Tingkat Urgensi AI
+                </p>
+                <p className="text-sm font-bold text-white mt-1">
+                  {PRIORITY_LABELS[report.aiUrgency] || report.aiUrgency}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3.5 rounded-2xl bg-[#080D1B]/60 border border-white/10 space-y-1">
+                <p className="text-[10px] font-bold uppercase text-slate-400">
+                  Ringkasan Masalah
+                </p>
+                <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+                  {aiSummaryText}
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-[#080D1B]/60 border border-white/10 space-y-1">
+                <p className="text-[10px] font-bold uppercase text-violet-300">
+                  Alasan Rekomendasi Urgensi
+                </p>
+                <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+                  {aiUrgencyReason}
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-[#080D1B]/60 border border-cyan-500/25 space-y-1">
+                <p className="text-[10px] font-bold uppercase text-[#06B6D4]">
+                  Rekomendasi Tindakan Awal
+                </p>
+                <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+                  {aiRecommendationAction}
+                </p>
+              </div>
+            </div>
 
             <p className="text-[11px] text-[#06B6D4] flex items-center space-x-1.5">
               <Info className="w-3.5 h-3.5 shrink-0" />
@@ -420,9 +553,20 @@ export default function AdminReportDetail() {
 
             {/* Selector 4 Tingkat Prioritas */}
             <div className="space-y-2">
-              <p className="text-xs font-semibold text-slate-300">
-                Tetapkan Prioritas Akhir Admin:
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-slate-300">
+                  Tetapkan Prioritas Akhir Admin:
+                </p>
+                <button
+                  type="button"
+                  disabled={isLocked || !report.aiUrgency || selectedPriority === report.aiUrgency}
+                  onClick={handleFollowAiRecommendation}
+                  className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-violet-200 bg-violet-500/20 hover:bg-violet-500/30 border border-violet-400/35 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>Ikuti Rekomendasi AI</span>
+                </button>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 {ADMIN_PRIORITY_OPTIONS.map((level) => {
                   const isActive = selectedPriority === level;
