@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { TaskProvider } from './context/TaskContext';
+import { AdminProvider } from './context/AdminContext';
 import Login from './pages/auth/Login';
 import DashboardLayout from './components/DashboardLayout';
 import ProtectedRoute, { getRoleHomePath } from './routes/ProtectedRoute';
@@ -12,6 +13,12 @@ import ReporterDashboard from './pages/reporter/Dashboard';
 import CreateReport from './pages/reporter/CreateReport';
 import MyReports from './pages/reporter/MyReports';
 import ReporterNotifications from './pages/reporter/Notifications';
+import AdminDashboard from './pages/admin/Dashboard';
+import AdminReports from './pages/admin/Reports';
+import AdminReportDetail from './pages/admin/ReportDetail';
+import AdminTechnicians from './pages/admin/Technicians';
+import AdminAssignments from './pages/admin/Assignments';
+import AdminNotifications from './pages/admin/Notifications';
 
 /**
  * Root redirector: redirects to the user's role dashboard if authenticated,
@@ -35,51 +42,13 @@ function RootRedirect() {
   return <Navigate to={getRoleHomePath(user.role)} replace />;
 }
 
-/**
- * Clean placeholder component for routes waiting for their respective development stages
- */
-function PlaceholderPage({ module, title, subtitle }) {
-  const { user } = useAuth();
-
-  return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 sm:p-8 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-slate-100">
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold tracking-wider uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
-                Modul {module}
-              </span>
-              <span className="text-xs text-slate-400">• Rute Aktif</span>
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900 mt-2">{title}</h1>
-            <p className="text-sm text-slate-500 mt-1">{subtitle}</p>
-          </div>
-
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 sm:text-right">
-            <p className="text-slate-400 font-semibold uppercase text-[10px]">Akses Pengguna</p>
-            <p className="font-bold text-slate-800">{user?.name} ({user?.role})</p>
-            <p className="font-mono text-slate-500 text-[11px]">{user?.identifier}</p>
-          </div>
-        </div>
-
-        <div className="mt-6 p-4 rounded-xl bg-indigo-50/60 border border-indigo-100 text-xs text-indigo-900">
-          <p className="font-semibold">Proteksi Rute Terverifikasi:</p>
-          <p className="mt-0.5 text-indigo-700">
-            Halaman ini berada di bawah perlindungan <code className="bg-white px-1.5 py-0.5 rounded border border-indigo-200 font-mono text-indigo-800">ProtectedRoute</code> untuk peran <strong>{user?.role}</strong>. Konten spesifik modul akan diimplementasikan pada tahap selanjutnya sesuai jobdesk tim.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <TaskProvider>
-          <Routes>
+          <AdminProvider>
+            <Routes>
           {/* Root redirect */}
           <Route path="/" element={<RootRedirect />} />
 
@@ -110,52 +79,19 @@ export default function App() {
 
             {/* Admin Routes (Member 3 - Admin Developer) */}
             <Route element={<ProtectedRoute allowedRoles={['Admin']} />}>
-              <Route
-                path="/admin"
-                element={
-                  <PlaceholderPage
-                    module="Admin"
-                    title="Dashboard Admin"
-                    subtitle="Statistik laporan, verifikasi, prioritas AI, dan pemantauan perbaikan."
-                  />
-                }
-              />
-              <Route
-                path="/admin/reports"
-                element={
-                  <PlaceholderPage
-                    module="Admin"
-                    title="Semua Laporan Fasilitas"
-                    subtitle="Daftar seluruh laporan kerusakan fasilitas dari sivitas akademika UNKLAB."
-                  />
-                }
-              />
-              <Route
-                path="/admin/technicians"
-                element={
-                  <PlaceholderPage
-                    module="Admin"
-                    title="Manajemen Teknisi"
-                    subtitle="Pengelolaan staf teknisi dan penugasan perbaikan fasilitas."
-                  />
-                }
-              />
-              <Route
-                path="/admin/notifications"
-                element={
-                  <PlaceholderPage
-                    module="Admin"
-                    title="Notifikasi Admin"
-                    subtitle="Notifikasi verifikasi laporan baru dan progres perbaikan."
-                  />
-                }
-              />
+              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin/reports" element={<AdminReports />} />
+              <Route path="/admin/reports/:id" element={<AdminReportDetail />} />
+              <Route path="/admin/technicians" element={<AdminTechnicians />} />
+              <Route path="/admin/assignments" element={<AdminAssignments />} />
+              <Route path="/admin/notifications" element={<AdminNotifications />} />
             </Route>
           </Route>
 
           {/* Catch-all Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            </Routes>
+          </AdminProvider>
         </TaskProvider>
       </AuthProvider>
     </BrowserRouter>
