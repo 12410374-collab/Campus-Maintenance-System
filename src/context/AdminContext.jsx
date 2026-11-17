@@ -17,6 +17,7 @@ import {
   getAllReports,
   updateReport as patchReportInApi,
 } from '../services/reportService';
+import { analyzeMaintenanceReport } from '../services/aiService';
 import {
   getAllTechnicians,
   createTechnician as createTechnicianInApi,
@@ -902,6 +903,69 @@ export function AdminProvider({ children }) {
   };
 
   /**
+   * Menganalisis ulang laporan dengan Gemini AI tanpa mengubah status maupun adminPriority
+   */
+  const reanalyzeReportWithAi = async (reportId) => {
+    const target = reports.find((r) => r.id === reportId);
+    if (!target) {
+      return { success: false, message: 'Laporan tidak ditemukan.' };
+    }
+
+    try {
+      const analysis = await analyzeMaintenanceReport({
+        title: target.title,
+        description: target.description || target.title,
+        location: target.location || '',
+        category: target.category || '',
+        urgency: target.urgency || '',
+      });
+
+      const nextAiAnalysis = {
+        category: analysis.category,
+        adminCategory: analysis.adminCategory,
+        urgency: analysis.urgency,
+        urgencyReason: analysis.urgencyReason,
+        summary: analysis.summary,
+        recommendation: analysis.recommendation,
+        insufficientInfo: Boolean(analysis.insufficientInfo),
+        advisoryOnly: true,
+        model: analysis.model,
+        source: 'gemini',
+      };
+
+      // Hanya perbarui field rekomendasi AI; status dan adminPriority tetap utuh
+      const patchPayload = {
+        aiUrgency: analysis.urgency,
+        aiSummary: analysis.summary,
+        aiAnalysis: nextAiAnalysis,
+      };
+
+      const updatedReport = await patchReportInApi(reportId, patchPayload);
+      const normalized = normalizeAdminReport({
+        ...target,
+        ...updatedReport,
+        ...patchPayload,
+      });
+
+      setRawReports((prev) =>
+        prev.map((r) => (r.id === reportId ? normalized : r))
+      );
+      setError('');
+
+      return {
+        success: true,
+        analysis: nextAiAnalysis,
+        message: `Analisis AI untuk laporan ${reportId} berhasil diperbarui.`,
+      };
+    } catch (err) {
+      const msg =
+        err?.message ||
+        'Gagal menganalisis ulang laporan dengan AI. Status dan prioritas laporan tetap aman.';
+      return { success: false, message: msg };
+    }
+  };
+
+  /**
    * Menambahkan teknisi baru via POST /technicians
    */
   const addTechnician = async (payload) => {
@@ -1251,6 +1315,7 @@ export function AdminProvider({ children }) {
     approveReport,
     rejectReport,
     updateReportPriority,
+    reanalyzeReportWithAi,
     addTechnician,
     updateTechnician,
     assignReportToTechnician,

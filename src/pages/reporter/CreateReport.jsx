@@ -25,12 +25,16 @@ import {
   Image as ImageIcon,
   ShieldAlert,
   ClipboardList,
+  Sparkles,
+  Loader2,
+  Info,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTasks } from '../../context/TaskContext';
 import { useAdmin } from '../../context/AdminContext';
 import { saveEvidenceImage } from '../../utils/imageStorage';
 import { formatWitaTimestamp, formatWitaIsoDate } from '../../utils/dateFormat';
+import { analyzeMaintenanceReport } from '../../services/aiService';
 import { getAllReports, createReport } from '../../services/reportService';
 import {
   createActivity,
@@ -42,6 +46,13 @@ const URGENCY_TO_PRIORITY_MAP = {
   Sedang: 'Medium',
   Tinggi: 'High',
   Kritis: 'Critical',
+};
+
+const PRIORITY_TO_URGENCY_MAP = {
+  Low: 'Rendah',
+  Medium: 'Sedang',
+  High: 'Tinggi',
+  Critical: 'Kritis',
 };
 
 const CATEGORY_TO_TECH_MAP = {
@@ -135,6 +146,12 @@ export default function CreateReport() {
   const [formAlert, setFormAlert] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedPreview, setSubmittedPreview] = useState(null);
+
+  // AI advisory analysis states
+  const [isAnalyzingAi, setIsAnalyzingAi] = useState(false);
+  const [aiPreviewResult, setAiPreviewResult] = useState(null);
+  const [aiPreviewKey, setAiPreviewKey] = useState('');
+  const [aiPreviewError, setAiPreviewError] = useState('');
 
   // Role identity badge meta
   const roleMeta = useMemo(() => {
@@ -256,6 +273,68 @@ export default function CreateReport() {
     return Object.keys(errors).length === 0;
   };
 
+  const buildAiInputKey = (rawTitle, rawLocation, rawDescription) =>
+    `${String(rawTitle || '').trim()}::${String(rawLocation || '').trim()}::${String(rawDescription || '').trim()}`;
+
+  const currentAiInputKey = buildAiInputKey(title, location, description);
+  const activeAiPreview =
+    aiPreviewResult && aiPreviewKey === currentAiInputKey ? aiPreviewResult : null;
+
+  // Analisis opsional dengan Gemini AI sebelum laporan dikirim (advisory only)
+  const handleAnalyzeWithAi = async () => {
+    setAiPreviewError('');
+
+    const cleanTitle = title.trim();
+    const cleanLocation = location.trim();
+    const cleanDescription = description.trim();
+
+    if (cleanTitle.length < 5 || cleanDescription.length < 10) {
+      setAiPreviewError(
+        'Isi judul (minimal 5 karakter) dan deskripsi kerusakan (minimal 10 karakter) terlebih dahulu untuk menjalankan analisis AI.'
+      );
+      return;
+    }
+
+    setIsAnalyzingAi(true);
+    try {
+      const result = await analyzeMaintenanceReport({
+        title: cleanTitle,
+        description: cleanDescription,
+        location: cleanLocation,
+        category,
+        urgency,
+      });
+
+      setAiPreviewResult(result);
+      setAiPreviewKey(buildAiInputKey(cleanTitle, cleanLocation, cleanDescription));
+    } catch (err) {
+      console.warn('Analisis AI pratinjau gagal (pengajuan laporan biasa tetap tersedia):', err);
+      setAiPreviewError(
+        err?.message ||
+          'Layanan AI sedang tidak tersedia. Anda tetap dapat mengirim laporan seperti biasa.'
+      );
+    } finally {
+      setIsAnalyzingAi(false);
+    }
+  };
+
+  // Terapkan saran kategori & urgensi AI ke form atas persetujuan pelapor
+  const handleApplyAiSuggestion = () => {
+    if (!activeAiPreview) return;
+
+    const matchedCategory = CATEGORIES.find((c) => c.id === activeAiPreview.adminCategory);
+    if (matchedCategory) {
+      setCategory(matchedCategory.id);
+      clearFieldError('category');
+    }
+
+    const mappedUrgencyId = PRIORITY_TO_URGENCY_MAP[activeAiPreview.urgency];
+    if (mappedUrgencyId) {
+      setUrgency(mappedUrgencyId);
+      clearFieldError('urgency');
+    }
+  };
+
   // Submit handler terhubung ke POST /reports + sinkronisasi lintas Context
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -297,7 +376,60 @@ export default function CreateReport() {
       const cleanTitle = title.trim();
       const cleanLocation = location.trim();
       const cleanDescription = description.trim();
-      const aiSummary = `Laporan baru kategori ${category} dengan tingkat urgensi ${urgency} di ${cleanLocation}.`;
+      const submitAiKey = buildAiInputKey(cleanTitle, cleanLocation, cleanDescription);
+
+      // Jalankan analisis AI secara non-blocking terhadap keberhasilan kirim laporan:
+      // bila AI gagal atau proxy mati, fallback ke ringkasan standar agar pelapor tetap bisa mengirim laporan.
+      let geminiAnalysis =
+        aiPreviewResult && aiPreviewKey === submitAiKey ? aiPreviewResult : null;
+
+      if (!geminiAnalysis) {
+        try {
+          geminiAnalysis = await analyzeMaintenanceReport({
+            title: cleanTitle,
+            description: cleanDescription,
+            location: cleanLocation,
+            category,
+            urgency,
+          });
+        } catch (aiErr) {
+          console.warn(
+            'Analisis AI gagal saat submit, melanjutkan pengiriman laporan dengan mode fallback:',
+            aiErr
+          );
+          geminiAnalysis = null;
+        }
+      }
+
+      const usedFallbackAi = !geminiAnalysis;
+      const fallbackSummary = `Laporan baru kategori ${category} dengan tingkat urgensi ${urgency} di ${cleanLocation}.`;
+      const fallbackUrgencyReason = `Mengacu pada tingkat urgensi awal ${urgency} yang dipilih pelapor untuk kategori ${category}.`;
+      const resolvedAiUrgency = geminiAnalysis?.urgency || mappedPriority;
+      const resolvedAiSummary = geminiAnalysis?.summary || fallbackSummary;
+      const resolvedAiAnalysis = geminiAnalysis
+        ? {
+            category: geminiAnalysis.category,
+            adminCategory: geminiAnalysis.adminCategory,
+            urgency: geminiAnalysis.urgency,
+            urgencyReason: geminiAnalysis.urgencyReason || fallbackUrgencyReason,
+            summary: geminiAnalysis.summary,
+            recommendation: geminiAnalysis.recommendation,
+            insufficientInfo: Boolean(geminiAnalysis.insufficientInfo),
+            advisoryOnly: true,
+            model: geminiAnalysis.model,
+            source: 'gemini',
+          }
+        : {
+            category: mappedTechCategory,
+            adminCategory: category,
+            urgency: mappedPriority,
+            urgencyReason: fallbackUrgencyReason,
+            summary: fallbackSummary,
+            recommendation: `Tinjau laporan ${reportId} di ${cleanLocation} dan lakukan pemeriksaan awal.`,
+            insufficientInfo: false,
+            advisoryOnly: true,
+            source: 'fallback',
+          };
 
       const reportPayload = {
         id: reportId,
@@ -311,7 +443,7 @@ export default function CreateReport() {
         reportedDate,
         reportedIsoDate,
         status: 'Pending',
-        aiUrgency: mappedPriority,
+        aiUrgency: resolvedAiUrgency,
         adminPriority: null,
         priority: mappedPriority,
         urgency,
@@ -322,13 +454,8 @@ export default function CreateReport() {
         statusNote: 'Laporan telah diterima sistem dan sedang menunggu verifikasi Admin Fasilitas.',
         damagePhoto: persistedDamagePhoto,
         evidencePhoto: null,
-        aiSummary,
-        aiAnalysis: {
-          category: mappedTechCategory,
-          urgency: mappedPriority,
-          summary: aiSummary,
-          recommendation: `Tinjau laporan ${reportId} di ${cleanLocation} dan tugaskan teknisi terkait.`,
-        },
+        aiSummary: resolvedAiSummary,
+        aiAnalysis: resolvedAiAnalysis,
         description: cleanDescription,
         repairNotes: '',
         completedDate: null,
@@ -350,6 +477,8 @@ export default function CreateReport() {
 
       // Catat aktivitas masuk & notifikasi Admin + Pelapor secara non-blocking
       const stamp = Date.now();
+      const isCriticalNotice =
+        resolvedAiUrgency === 'Critical' || mappedPriority === 'Critical';
       await Promise.allSettled([
         createActivity({
           id: `ACT-${stamp}`,
@@ -364,11 +493,10 @@ export default function CreateReport() {
           id: `NTF-ADM-${stamp}`,
           recipientId: 'admin',
           targetRole: 'Admin',
-          type: mappedPriority === 'Critical' ? 'critical_ai' : 'incoming',
-          title:
-            mappedPriority === 'Critical'
-              ? 'Laporan baru dengan urgensi kritis'
-              : 'Laporan baru diterima',
+          type: isCriticalNotice ? 'critical_ai' : 'incoming',
+          title: isCriticalNotice
+            ? 'Laporan baru dengan urgensi kritis'
+            : 'Laporan baru diterima',
           message: `${cleanTitle} (${cleanLocation}) diajukan oleh ${user.name}.`,
           reportId: createdReport.id,
           actor: `${user.name} (${roleMeta.label})`,
@@ -403,6 +531,10 @@ export default function CreateReport() {
         location: createdReport.location,
         description: createdReport.description,
         urgency,
+        aiSummary: resolvedAiSummary,
+        aiRecommendation: resolvedAiAnalysis.recommendation,
+        aiUrgencyLabel: PRIORITY_TO_URGENCY_MAP[resolvedAiUrgency] || urgency,
+        usedFallbackAi,
         hasPhoto: Boolean(photoPreview),
         photoName: photoFile?.name || null,
         photoPreview,
@@ -428,6 +560,10 @@ export default function CreateReport() {
     setFieldErrors({});
     setFormAlert('');
     setSubmittedPreview(null);
+    setIsAnalyzingAi(false);
+    setAiPreviewResult(null);
+    setAiPreviewKey('');
+    setAiPreviewError('');
   };
 
   return (
@@ -513,6 +649,32 @@ export default function CreateReport() {
                 <p className="text-[11px] font-semibold text-slate-400">Deskripsi Kerusakan</p>
                 <p className="text-slate-700 mt-0.5 leading-relaxed">{submittedPreview.description}</p>
               </div>
+
+              {submittedPreview.aiSummary && (
+                <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/70 p-3 space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="inline-flex items-center space-x-1.5 text-[11px] font-bold text-indigo-800">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>
+                        {submittedPreview.usedFallbackAi
+                          ? 'Ringkasan Sistem (Cadangan Non-AI)'
+                          : 'Ringkasan Analisis AI (Advisory)'}
+                      </span>
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-indigo-700 border border-indigo-200">
+                      Urgensi AI: {submittedPreview.aiUrgencyLabel}
+                    </span>
+                  </div>
+                  <p className="text-[11.5px] text-slate-700 leading-relaxed">
+                    {submittedPreview.aiSummary}
+                  </p>
+                  {submittedPreview.aiRecommendation && (
+                    <p className="text-[11px] text-indigo-900/90 leading-relaxed">
+                      <strong>Tindakan Awal:</strong> {submittedPreview.aiRecommendation}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {submittedPreview.photoPreview && (
                 <div>
@@ -756,6 +918,85 @@ export default function CreateReport() {
                   {fieldErrors.description && (
                     <p className="text-[11px] text-rose-600 font-medium mt-1">{fieldErrors.description}</p>
                   )}
+
+                  {/* Asisten Analisis AI (Advisory Only — tidak mengubah alur wajib laporan) */}
+                  <div className="mt-3 pt-3 border-t border-slate-100 space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[11px] text-slate-500 flex items-center space-x-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                        <span>
+                          Dapatkan saran kategori, urgensi, dan ringkasan awal otomatis dari AI.
+                        </span>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleAnalyzeWithAi}
+                        disabled={isAnalyzingAi || isSubmitting}
+                        className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        {isAnalyzingAi ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                        )}
+                        <span>{isAnalyzingAi ? 'Menganalisis...' : 'Analisis dengan AI'}</span>
+                      </button>
+                    </div>
+
+                    {aiPreviewError && (
+                      <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-start space-x-2">
+                        <Info className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                        <span>{aiPreviewError}</span>
+                      </div>
+                    )}
+
+                    {activeAiPreview && (
+                      <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50/80 via-purple-50/50 to-white border border-indigo-200/80 space-y-2.5 text-xs">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="inline-flex items-center space-x-1.5 font-bold text-indigo-900">
+                            <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                            <span>Rekomendasi Awal AI (Advisory)</span>
+                          </span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-white text-indigo-700 border border-indigo-200">
+                              {activeAiPreview.adminCategory}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                              Urgensi: {activeAiPreview.urgencyLabelId}
+                            </span>
+                          </div>
+                        </div>
+
+                        <p className="text-[11.5px] text-slate-700 leading-relaxed">
+                          {activeAiPreview.summary}
+                        </p>
+
+                        <p className="text-[11px] text-indigo-900/90 leading-relaxed bg-white/80 p-2.5 rounded-xl border border-indigo-100">
+                          <strong>Saran Tindakan Awal:</strong> {activeAiPreview.recommendation}
+                        </p>
+
+                        {activeAiPreview.insufficientInfo && (
+                          <p className="text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-2.5 py-1.5">
+                            Informasi laporan masih terbatas; disarankan melengkapi detail kerusakan atau dilakukan inspeksi manual.
+                          </p>
+                        )}
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                          <span className="text-[10.5px] text-slate-500">
+                            Keputusan akhir prioritas tetap ditetapkan oleh Admin.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleApplyAiSuggestion}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors cursor-pointer"
+                          >
+                            <Check className="w-3 h-3" />
+                            <span>Terapkan ke Form</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div>
@@ -981,7 +1222,7 @@ export default function CreateReport() {
                       className="w-full flex items-center justify-center space-x-2 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm text-white bg-gradient-to-r from-[#0B132B] via-indigo-900 to-purple-900 hover:from-indigo-800 hover:via-indigo-700 hover:to-purple-700 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.985] transition-all duration-200 shadow-lg shadow-indigo-950/20 disabled:opacity-50 cursor-pointer"
                     >
                       <Send className="w-4 h-4 text-indigo-200" />
-                      <span>{isSubmitting ? 'Memvalidasi...' : 'Kirim Laporan'}</span>
+                      <span>{isSubmitting ? 'Menganalisis & Mengirim...' : 'Kirim Laporan'}</span>
                     </button>
 
                     <Link
