@@ -1,6 +1,16 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import { useAuth } from './AuthContext';
 import { saveEvidenceImage, getAllEvidenceImages } from '../utils/imageStorage';
+
+const CATEGORY_TO_TECH_MAP = {
+  Kelistrikan: 'Electrical',
+  'Plumbing / Sanitasi': 'Plumbing',
+  Elektronik: 'Electronics',
+  Furniture: 'Furniture',
+  'Infrastruktur / Bangunan': 'Infrastructure',
+  Lainnya: 'Other',
+};
 
 // Unified 12 tasks master dataset matching Dashboard, Tasks, TaskDetail, and History
 export const INITIAL_TASKS = [
@@ -511,6 +521,7 @@ function loadStoredTasks() {
 }
 
 export function TaskProvider({ children }) {
+  const { user, role } = useAuth();
   const [tasks, setTasks] = useState(loadStoredTasks);
 
   // Hydrate evidence photos from IndexedDB on initial mount
@@ -626,20 +637,121 @@ export function TaskProvider({ children }) {
     });
   };
 
+  // Tambahkan tugas baru hasil penugasan Admin agar langsung tampil pada modul Teknisi
+  const assignTaskFromAdmin = (report, technician, adminName = 'Admin Sarana & Fasilitas') => {
+    if (!report || !technician) return;
+
+    const now = new Date();
+    const formattedDate = `${now.getDate()} Nov 2026, ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const techCategory = CATEGORY_TO_TECH_MAP[report.category] || report.category || 'Infrastructure';
+    const finalPriority = report.adminPriority || report.aiUrgency || 'Medium';
+
+    const newTask = {
+      id: report.id,
+      title: report.title,
+      category: techCategory,
+      location: report.location,
+      priority: finalPriority,
+      aiPriority: report.aiUrgency || 'Medium',
+      status: 'Assigned',
+      reportedDate: report.reportedDate,
+      completedDate: null,
+      completionDay: null,
+      duration: '',
+      reporterName: `${report.reporterName} (${report.reporterRole})`,
+      description: report.description,
+      urgencyReason: report.aiSummary || 'Memerlukan penanganan teknisi fasilitas.',
+      damagePhoto: report.damagePhoto || null,
+      evidencePhoto: null,
+      repairNotes: '',
+      assignedByAdmin: true,
+      sourceReportId: report.id,
+      assignedTechnicianId: technician.id,
+      assignedTechnicianName: technician.name,
+      aiAnalysis: {
+        category: techCategory,
+        urgency: report.aiUrgency || 'Medium',
+        summary: report.aiSummary || report.description,
+        recommendation: `Lakukan pemeriksaan di ${report.location} untuk laporan ${report.id}.`,
+      },
+      updates: [
+        {
+          id: `upd-${Date.now()}`,
+          timestamp: formattedDate,
+          author: adminName,
+          status: 'Assigned',
+          notes: `Laporan diverifikasi dan ditugaskan kepada ${technician.name} (${technician.id}) dengan prioritas ${finalPriority}.`,
+        },
+      ],
+    };
+
+    setTasks((prevTasks) => {
+      const exists = prevTasks.some((t) => t.id.toLowerCase() === report.id.toLowerCase());
+      const nextTasks = exists
+        ? prevTasks.map((t) =>
+            t.id.toLowerCase() === report.id.toLowerCase()
+              ? t.assignedByAdmin
+                ? {
+                    ...t,
+                    status: 'Assigned',
+                    priority: finalPriority,
+                    assignedByAdmin: true,
+                    sourceReportId: report.id,
+                    assignedTechnicianId: technician.id,
+                    assignedTechnicianName: technician.name,
+                    updates: [newTask.updates[0], ...(t.updates || [])],
+                  }
+                : newTask
+              : t
+          )
+        : [newTask, ...prevTasks];
+
+      try {
+        const payloadToStore = nextTasks.map((t) => {
+          if (
+            t.evidencePhoto &&
+            typeof t.evidencePhoto === 'string' &&
+            t.evidencePhoto.startsWith('data:image/')
+          ) {
+            return { ...t, evidencePhoto: `idb:photo_${t.id}` };
+          }
+          return t;
+        });
+        window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(payloadToStore));
+      } catch (err) {
+        console.warn('Gagal menyimpan penugasan ke localStorage:', err);
+      }
+
+      return nextTasks;
+    });
+  };
+
+  // Filter tugas sesuai akun teknisi yang login (tugas bawaan tanpa assignedTechnicianId milik TECH-001)
+  const visibleTasks = useMemo(() => {
+    if (role !== 'Technician' || !user?.identifier) {
+      return tasks;
+    }
+    return tasks.filter((t) =>
+      t.assignedTechnicianId
+        ? t.assignedTechnicianId.toLowerCase() === user.identifier.toLowerCase()
+        : user.identifier === 'TECH-001'
+    );
+  }, [tasks, role, user]);
+
   // Helper to fetch task by ID
   const getTaskById = (taskId) => {
     if (!taskId) return null;
-    return tasks.find((t) => t.id.toLowerCase() === taskId.toLowerCase()) || null;
+    return visibleTasks.find((t) => t.id.toLowerCase() === taskId.toLowerCase()) || null;
   };
 
   // Derived collections
   const activeTasks = useMemo(() => {
-    return tasks.filter((t) => t.status !== 'Completed');
-  }, [tasks]);
+    return visibleTasks.filter((t) => t.status !== 'Completed');
+  }, [visibleTasks]);
 
   const completedTasks = useMemo(() => {
-    return tasks.filter((t) => t.status === 'Completed');
-  }, [tasks]);
+    return visibleTasks.filter((t) => t.status === 'Completed');
+  }, [visibleTasks]);
 
   // Reset to initial mock dataset if needed
   const resetTasks = () => {
@@ -652,11 +764,13 @@ export function TaskProvider({ children }) {
   };
 
   const value = {
-    tasks,
+    tasks: visibleTasks,
+    allTasks: tasks,
     activeTasks,
     completedTasks,
     getTaskById,
     updateTask,
+    assignTaskFromAdmin,
     resetTasks,
   };
 

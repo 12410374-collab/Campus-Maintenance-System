@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import {
   Menu,
   Bell,
@@ -10,9 +11,12 @@ import {
   Briefcase,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useAdmin } from '../../context/AdminContext';
 
 export default function Header({ onMenuToggle }) {
   const { user, role, logout } = useAuth();
+  const { unreadNotificationCount } = useAdmin();
+  const navigate = useNavigate();
 
   // Role badge configuration
   const getRoleBadge = () => {
@@ -78,15 +82,40 @@ export default function Header({ onMenuToggle }) {
       {/* Right: Notifications, User Profile & Logout */}
       <div className="flex items-center space-x-2 sm:space-x-4">
         {/* In-app Notification Bell (Scope: Section 8 in PROJECT_CONTEXT.md) */}
-        <button
-          type="button"
-          className="relative p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
-          title="Notifikasi Masuk"
-          aria-label="Notifikasi"
-        >
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white"></span>
-        </button>
+        {role === 'Admin' ? (
+          <button
+            type="button"
+            onClick={() => navigate('/admin/notifications')}
+            className="relative p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+            title={
+              unreadNotificationCount > 0
+                ? `Notifikasi Admin (${unreadNotificationCount} belum dibaca)`
+                : 'Notifikasi Admin'
+            }
+            aria-label={
+              unreadNotificationCount > 0
+                ? `Notifikasi Admin, ${unreadNotificationCount} belum dibaca`
+                : 'Notifikasi Admin'
+            }
+          >
+            <Bell className="w-5 h-5" />
+            {unreadNotificationCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold leading-none flex items-center justify-center ring-2 ring-white tabular-nums">
+                {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+              </span>
+            )}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="relative p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+            title="Notifikasi Masuk"
+            aria-label="Notifikasi"
+          >
+            <Bell className="w-5 h-5" />
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white"></span>
+          </button>
+        )}
 
         <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
 
