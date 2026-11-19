@@ -19,6 +19,8 @@ import {
   RotateCcw,
   Clock,
   Check,
+  Loader2,
+  Info,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAdmin } from '../../context/AdminContext';
@@ -121,6 +123,7 @@ export default function AdminAssignments() {
 
   const [selectedTechId, setSelectedTechId] = useState(null);
   const [feedback, setFeedback] = useState(null);
+  const [isAssigning, setIsAssigning] = useState(false);
 
   // Ringkasan 3 metrik utama halaman Penugasan Teknisi
   const overviewStats = useMemo(() => {
@@ -209,7 +212,7 @@ export default function AdminAssignments() {
   };
 
   const handleSelectReport = (report) => {
-    if (!isReportEligibleForAssignment(report)) return;
+    if (isAssigning || !isReportEligibleForAssignment(report)) return;
     setUserSelectedReportId(report.id);
     setSelectedTechId(null);
     setFeedback(null);
@@ -222,29 +225,45 @@ export default function AdminAssignments() {
   };
 
   const handleConfirmAssignment = async () => {
-    if (!selectedReport || !selectedTechnician) return;
+    if (!selectedReport || !selectedTechnician || isAssigning) return;
 
-    const result = await assignReportToTechnician(
-      selectedReport.id,
-      selectedTechnician.id,
-      user?.name
-    );
+    setIsAssigning(true);
+    setFeedback(null);
 
-    if (result.success) {
-      setFeedback({
-        type: 'success',
-        text: `${result.message} Tugas kini muncul pada akun teknisi terkait.`,
-      });
-      setSelectedTechId(null);
-      setUserSelectedReportId(null);
-      if (queryReportId) {
-        setSearchParams({}, { replace: true });
+    try {
+      const result = await assignReportToTechnician(
+        selectedReport.id,
+        selectedTechnician.id,
+        user?.name
+      );
+
+      if (result?.success) {
+        setFeedback({
+          type: 'success',
+          text: `${result.message} Penugasan telah tersimpan ke server backend dan siap dikerjakan pada akun ${selectedTechnician.name} (${selectedTechnician.id}).`,
+        });
+        setSelectedTechId(null);
+        setUserSelectedReportId(null);
+        if (queryReportId) {
+          setSearchParams({}, { replace: true });
+        }
+      } else {
+        setFeedback({
+          type: 'error',
+          text:
+            result?.message ||
+            'Gagal menyimpan penugasan teknisi ke server backend. Silakan coba lagi.',
+        });
       }
-    } else {
+    } catch (err) {
       setFeedback({
         type: 'error',
-        text: result.message,
+        text:
+          err?.message ||
+          'Terjadi kesalahan saat menyimpan penugasan ke server backend. Pastikan JSON Server berjalan.',
       });
+    } finally {
+      setIsAssigning(false);
     }
   };
 
@@ -356,7 +375,7 @@ export default function AdminAssignments() {
             ) : (
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             )}
-            <span>{feedback.text} (Tersimpan pada sesi lokal)</span>
+            <span>{feedback.text}</span>
           </div>
           <button
             type="button"
@@ -760,12 +779,21 @@ export default function AdminAssignments() {
 
               <button
                 type="button"
-                disabled={!selectedTechnician}
+                disabled={!selectedTechnician || isAssigning}
                 onClick={handleConfirmAssignment}
                 className="w-full flex items-center justify-center space-x-2 py-3 px-4 rounded-xl text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-[#2563EB] to-[#8B5CF6] hover:from-blue-500 hover:to-violet-500 shadow-lg shadow-blue-950/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
-                <UserCheck className="w-4 h-4" />
-                <span>Konfirmasi Penugasan</span>
+                {isAssigning ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Menyimpan Penugasan...</span>
+                  </>
+                ) : (
+                  <>
+                    <UserCheck className="w-4 h-4" />
+                    <span>Konfirmasi Penugasan</span>
+                  </>
+                )}
               </button>
             </div>
 
@@ -780,6 +808,15 @@ export default function AdminAssignments() {
                 </span>
               </div>
 
+              <div className="p-3 rounded-2xl bg-[#080D1B]/80 border border-cyan-500/25 text-[11px] text-cyan-100/90 flex items-start space-x-2">
+                <Info className="w-4 h-4 text-[#06B6D4] shrink-0 mt-0.5" />
+                <span>
+                  Untuk pengujian login halaman Teknisi, akun demo yang tersedia adalah{' '}
+                  <strong className="text-white">Rudi Hartono (TECH-001)</strong>. Pilih kartu teknisi lalu tekan{' '}
+                  <strong className="text-white">Konfirmasi Penugasan</strong>.
+                </span>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {sortedTechnicians.map((tech) => {
                   const isPicked = selectedTechnician?.id === tech.id;
@@ -787,7 +824,7 @@ export default function AdminAssignments() {
                     <button
                       key={tech.id}
                       type="button"
-                      disabled={tech.isUnavailable}
+                      disabled={tech.isUnavailable || isAssigning}
                       onClick={() => setSelectedTechId(tech.id)}
                       className={`text-left p-4 rounded-2xl border transition-all ${
                         tech.isUnavailable

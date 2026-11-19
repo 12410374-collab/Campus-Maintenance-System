@@ -36,6 +36,18 @@ const TECH_CATEGORY_LABELS_ID = {
   Other: 'Lainnya',
 };
 
+function isRenderablePhotoSrc(photoValue) {
+  return (
+    typeof photoValue === 'string' &&
+    photoValue.trim().length > 0 &&
+    !photoValue.startsWith('idb:')
+  );
+}
+
+function isUnresolvedIdbPointer(photoValue) {
+  return typeof photoValue === 'string' && photoValue.startsWith('idb:');
+}
+
 const STATUS_META = {
   Pending: {
     label: 'Menunggu Verifikasi',
@@ -304,7 +316,7 @@ export default function AdminReportDetail() {
             ) : (
               <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
             )}
-            <span>{feedback.text} (Tersimpan pada state sesi aktif frontend)</span>
+            <span>{feedback.text}</span>
           </div>
           <button
             type="button"
@@ -390,7 +402,7 @@ export default function AdminReportDetail() {
               </h2>
             </div>
 
-            {report.damagePhoto ? (
+            {isRenderablePhotoSrc(report.damagePhoto) ? (
               <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-900/5">
                 <img
                   src={report.damagePhoto}
@@ -398,9 +410,53 @@ export default function AdminReportDetail() {
                   className="w-full max-h-72 object-cover"
                 />
               </div>
+            ) : isUnresolvedIdbPointer(report.damagePhoto) ? (
+              <div className="py-6 px-4 rounded-2xl border border-amber-200 bg-amber-50 text-center text-xs text-amber-800">
+                Foto kerusakan tersimpan di penyimpanan lokal browser pengunggah (IndexedDB) dan hanya tampil pada browser serta port yang sama.
+              </div>
             ) : (
               <div className="py-8 px-4 rounded-2xl border border-dashed border-slate-300 bg-white text-center text-xs text-slate-400">
                 Pelapor tidak melampirkan foto kerusakan.
+              </div>
+            )}
+          </section>
+
+          {/* Bukti Foto Perbaikan Teknisi */}
+          <section className="rounded-3xl bg-[#F8FAFC] border-[1.5px] border-slate-300/90 p-5 sm:p-6 shadow-sm space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+              <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-700 flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>Bukti Foto Perbaikan Teknisi</span>
+              </h2>
+              {report.completedDate && (
+                <span className="text-[11px] font-mono text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                  Selesai: {report.completedDate}
+                </span>
+              )}
+            </div>
+
+            {report.repairNotes && (
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200 text-xs text-slate-700 leading-relaxed">
+                <span className="font-bold text-slate-900">Catatan Teknisi: </span>
+                {report.repairNotes}
+              </div>
+            )}
+
+            {isRenderablePhotoSrc(report.evidencePhoto) ? (
+              <div className="rounded-2xl overflow-hidden border border-emerald-200 bg-slate-900/5">
+                <img
+                  src={report.evidencePhoto}
+                  alt={`Bukti perbaikan ${report.title}`}
+                  className="w-full max-h-72 object-cover"
+                />
+              </div>
+            ) : isUnresolvedIdbPointer(report.evidencePhoto) ? (
+              <div className="py-6 px-4 rounded-2xl border border-amber-200 bg-amber-50 text-center text-xs text-amber-800">
+                Foto bukti perbaikan sudah tercatat di sistem, tetapi tersimpan di IndexedDB browser pengunggah sehingga hanya tampil pada browser dan alamat port yang sama.
+              </div>
+            ) : (
+              <div className="py-8 px-4 rounded-2xl border border-dashed border-slate-300 bg-white text-center text-xs text-slate-400">
+                Foto bukti perbaikan dari teknisi belum tersedia.
               </div>
             )}
           </section>
@@ -636,22 +692,22 @@ export default function AdminReportDetail() {
                   </button>
                 ) : (
                   <div className="space-y-2.5">
-                    <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-800 flex items-center space-x-2">
-                      <ClipboardCheck className="w-4 h-4 text-blue-600 shrink-0" />
+                    <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-800 flex items-start space-x-2">
+                      <ClipboardCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
                       <span>
                         {report.assignedTechnician
                           ? `Telah ditugaskan kepada ${report.assignedTechnician} (${statusMeta.label}).`
-                          : `Laporan telah disetujui (${statusMeta.label}) dan siap ditugaskan.`}
+                          : 'Laporan telah disetujui dan siap ditugaskan. Admin masih harus memilih teknisi dan menekan Konfirmasi Penugasan pada halaman Penugasan Teknisi.'}
                       </span>
                     </div>
 
-                    {report.status === 'Approved' && !report.assignedTechnician && (
+                    {report.status === 'Approved' && !report.assignedTechnicianId && !report.assignedTechnician && (
                       <Link
                         to={`/admin/assignments?reportId=${report.id}`}
                         className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-[#2563EB] to-[#8B5CF6] hover:from-blue-500 hover:to-violet-500 shadow-md transition-all"
                       >
                         <Wrench className="w-4 h-4" />
-                        <span>Tugaskan Teknisi</span>
+                        <span>Pilih &amp; Tugaskan Teknisi</span>
                       </Link>
                     )}
                   </div>

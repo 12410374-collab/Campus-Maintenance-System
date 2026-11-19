@@ -15,6 +15,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { useTasks } from '../../context/TaskContext';
+import { sortReportsNewestFirst } from '../../utils/dateFormat';
 
 export default function TechnicianTasks() {
   const { tasks } = useTasks();
@@ -24,9 +25,9 @@ export default function TechnicianTasks() {
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedPriority, setSelectedPriority] = useState('ALL');
 
-  // Filter calculation
+  // Filter calculation (terurut terbaru di atas)
   const filteredTasks = useMemo(() => {
-    return tasks.filter((task) => {
+    return sortReportsNewestFirst(tasks).filter((task) => {
       // Search match
       const query = searchQuery.toLowerCase().trim();
       const matchesSearch =

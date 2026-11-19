@@ -32,6 +32,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { getReportsByReporterId } from '../../services/reportService';
 import { getAllEvidenceImages } from '../../utils/imageStorage';
+import { sortReportsNewestFirst } from '../../utils/dateFormat';
 import {
   MOCK_REPORTER_REPORTS,
   REPORT_STATUS_OPTIONS,
@@ -52,6 +53,14 @@ function resolveReporterPhoto(photoValue, idbPhotos = {}) {
     return idbPhotos[key] || null;
   }
   return photoValue ?? null;
+}
+
+function isRenderablePhotoSrc(photoValue) {
+  return (
+    typeof photoValue === 'string' &&
+    photoValue.trim().length > 0 &&
+    !photoValue.startsWith('idb:')
+  );
 }
 
 const TRACKING_STEPS = [
@@ -114,21 +123,26 @@ export default function MyReports() {
         if (!isMounted) return;
 
         const userId = user.identifier.toLowerCase();
-        const ownedReports = apiReports
-          .filter((item) => item.reporterId && item.reporterId.toLowerCase() === userId)
-          .map((item) => ({
-            ...item,
-            urgency:
-              item.urgency ||
-              PRIORITY_TO_URGENCY_ID[item.adminPriority || item.priority || item.aiUrgency] ||
-              'Sedang',
-            statusNote:
-              item.statusNote ||
-              (item.rejectionReason ? `Ditolak: ${item.rejectionReason}` : ''),
-            damagePhoto: resolveReporterPhoto(item.damagePhoto, idbPhotos),
-            evidencePhoto: resolveReporterPhoto(item.evidencePhoto, idbPhotos),
-          }))
-          .sort((a, b) => (b.id || '').localeCompare(a.id || ''));
+        const ownedReports = sortReportsNewestFirst(
+          apiReports
+            .filter((item) => item.reporterId && item.reporterId.toLowerCase() === userId)
+            .map((item) => ({
+              ...item,
+              urgency:
+                item.urgency ||
+                PRIORITY_TO_URGENCY_ID[item.adminPriority || item.priority || item.aiUrgency] ||
+                'Sedang',
+              statusNote:
+                item.statusNote ||
+                (item.rejectionReason ? `Ditolak: ${item.rejectionReason}` : ''),
+              damagePhoto: resolveReporterPhoto(item.damagePhoto, idbPhotos),
+              evidencePhoto: resolveReporterPhoto(item.evidencePhoto, idbPhotos),
+              hasLocalEvidenceRef:
+                typeof item.evidencePhoto === 'string' &&
+                item.evidencePhoto.startsWith('idb:') &&
+                !idbPhotos[item.evidencePhoto.replace('idb:', '')],
+            }))
+        );
 
         setReports(ownedReports);
         setError('');
@@ -136,7 +150,7 @@ export default function MyReports() {
         console.warn('Gagal memuat Laporan Saya dari JSON Server, menggunakan fallback:', err);
         if (!isMounted) return;
 
-        setReports(filterReportsByReporter(MOCK_REPORTER_REPORTS, user));
+        setReports(sortReportsNewestFirst(filterReportsByReporter(MOCK_REPORTER_REPORTS, user)));
         setError(
           err?.message ||
             'Gagal terhubung ke server backend. Menampilkan data cache lokal.'
@@ -673,11 +687,11 @@ export default function MyReports() {
           onClick={() => setSelectedReport(null)}
         >
           <div
-            className="w-full max-w-lg bg-white rounded-3xl border-[1.5px] border-indigo-200/80 shadow-2xl overflow-hidden animate-fadeInUp"
+            className="w-full max-w-lg max-h-[90vh] flex flex-col bg-white rounded-3xl border-[1.5px] border-indigo-200/80 shadow-2xl overflow-hidden animate-fadeInUp"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="bg-gradient-to-r from-[#080E21] via-[#131842] to-[#261452] px-6 py-4 text-white flex items-center justify-between">
+            <div className="bg-gradient-to-r from-[#080E21] via-[#131842] to-[#261452] px-6 py-4 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center space-x-2.5">
                 <span className="font-mono text-xs font-bold bg-white/15 px-2.5 py-1 rounded-lg border border-white/15">
                   {selectedReport.id}
@@ -697,7 +711,7 @@ export default function MyReports() {
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 space-y-4 text-xs">
+            <div className="p-6 space-y-4 text-xs overflow-y-auto">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-slate-500 font-semibold">{selectedReport.category}</span>
                 {renderStatusBadge(selectedReport.status)}
@@ -744,7 +758,7 @@ export default function MyReports() {
                 </div>
               )}
 
-              {selectedReport.damagePhoto && (
+              {isRenderablePhotoSrc(selectedReport.damagePhoto) && (
                 <div>
                   <p className="text-[11px] font-bold text-slate-700 mb-1">Lampiran Foto Kerusakan:</p>
                   <img
@@ -754,6 +768,42 @@ export default function MyReports() {
                   />
                 </div>
               )}
+
+              {/* Bukti Foto Perbaikan Teknisi */}
+              <div className="p-3.5 rounded-2xl bg-emerald-50/50 border border-emerald-200/80 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[11px] font-bold text-emerald-900">
+                    Bukti Foto Perbaikan Teknisi
+                  </p>
+                  {selectedReport.completedDate && (
+                    <span className="text-[10.5px] font-mono text-emerald-700">
+                      Selesai: {selectedReport.completedDate}
+                    </span>
+                  )}
+                </div>
+
+                {selectedReport.repairNotes && (
+                  <p className="text-[11.5px] text-slate-700 bg-white/90 px-3 py-2 rounded-xl border border-emerald-100 leading-relaxed">
+                    <strong>Catatan Teknisi:</strong> {selectedReport.repairNotes}
+                  </p>
+                )}
+
+                {isRenderablePhotoSrc(selectedReport.evidencePhoto) ? (
+                  <img
+                    src={selectedReport.evidencePhoto}
+                    alt={`Bukti perbaikan ${selectedReport.title}`}
+                    className="w-full max-h-56 rounded-xl border border-emerald-200 object-cover bg-white"
+                  />
+                ) : selectedReport.hasLocalEvidenceRef ? (
+                  <p className="text-[11px] text-amber-800 bg-amber-50 px-3 py-2 rounded-xl border border-amber-200">
+                    Foto bukti perbaikan sudah tercatat di sistem, tetapi tersimpan di penyimpanan lokal browser pengunggah (IndexedDB) sehingga hanya dapat dilihat pada browser dan alamat port yang sama.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-500 bg-white/80 px-3 py-2.5 rounded-xl border border-dashed border-slate-300">
+                    Foto bukti perbaikan dari teknisi belum tersedia.
+                  </p>
+                )}
+              </div>
 
               {/* Info status sinkronisasi */}
               <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200/70 text-[11px] text-blue-800 flex items-start space-x-2">

@@ -130,3 +130,53 @@ export function parseWitaTimestampMs(ts) {
   const fallback = Date.parse(trimmed.replace(',', ''));
   return Number.isNaN(fallback) ? 0 : fallback;
 }
+
+/**
+ * Mengambil timestamp pembuatan laporan (ms) dengan aman dari field createdAt, reportedDate, atau reportedIsoDate.
+ * Mengembalikan 0 jika tanggal tidak tersedia atau tidak valid.
+ *
+ * @param {Object} report
+ * @returns {number}
+ */
+export function getReportCreatedTimestampMs(report) {
+  if (!report || typeof report !== 'object') return 0;
+
+  const candidates = [report.createdAt, report.reportedDate, report.reportedIsoDate];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+      return candidate;
+    }
+    const ms = parseWitaTimestampMs(candidate);
+    if (ms > 0) return ms;
+  }
+
+  return 0;
+}
+
+/**
+ * Pembanding pengurutan laporan terbaru ke terlama (descending).
+ * Jika timestamp sama atau tidak tersedia, menggunakan ID laporan secara descending sebagai tie-breaker.
+ *
+ * @param {Object} a
+ * @param {Object} b
+ * @returns {number}
+ */
+export function compareReportsNewestFirst(a, b) {
+  const timeDiff = getReportCreatedTimestampMs(b) - getReportCreatedTimestampMs(a);
+  if (timeDiff !== 0) return timeDiff;
+
+  const idA = typeof a?.id === 'string' ? a.id : String(a?.id ?? '');
+  const idB = typeof b?.id === 'string' ? b.id : String(b?.id ?? '');
+  return idB.localeCompare(idA, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+/**
+ * Mengembalikan salinan daftar laporan terurut dari terbaru ke terlama (tanpa memutasi array asal).
+ *
+ * @param {Array<Object>} reports
+ * @returns {Array<Object>}
+ */
+export function sortReportsNewestFirst(reports) {
+  if (!Array.isArray(reports)) return [];
+  return [...reports].sort(compareReportsNewestFirst);
+}

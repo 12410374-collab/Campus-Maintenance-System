@@ -28,7 +28,10 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAdmin } from '../../context/AdminContext';
-import { formatWitaLongDateId } from '../../utils/dateFormat';
+import {
+  formatWitaLongDateId,
+  compareReportsNewestFirst,
+} from '../../utils/dateFormat';
 import {
   ADMIN_REPORT_STATUSES,
   MOCK_MAINTENANCE_ACTIVITY,
@@ -276,7 +279,7 @@ export default function AdminDashboard() {
       if (rankDiff !== 0) return rankDiff;
       if (a.status === 'Pending' && b.status !== 'Pending') return -1;
       if (b.status === 'Pending' && a.status !== 'Pending') return 1;
-      return 0;
+      return compareReportsNewestFirst(a, b);
     });
 
     if (priorityFilter === 'ALL') return enriched;

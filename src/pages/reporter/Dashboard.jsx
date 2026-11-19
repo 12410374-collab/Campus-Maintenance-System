@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getReportsByReporterId } from '../../services/reportService';
+import { sortReportsNewestFirst } from '../../utils/dateFormat';
 import {
   MOCK_REPORTER_REPORTS,
   filterReportsByReporter,
@@ -85,13 +86,13 @@ export default function ReporterDashboard() {
         if (!isMounted) return;
 
         // Pastikan hanya laporan milik pengguna yang sedang login & urutkan terbaru lebih dulu
-        const ownedReports = apiReports
-          .filter(
+        const ownedReports = sortReportsNewestFirst(
+          apiReports.filter(
             (r) =>
               !r.reporterId ||
               r.reporterId.toLowerCase() === user.identifier.toLowerCase()
           )
-          .sort((a, b) => (b.id || '').localeCompare(a.id || ''));
+        );
 
         setReports(ownedReports);
         setError('');
@@ -99,7 +100,7 @@ export default function ReporterDashboard() {
         console.warn('Gagal memuat laporan Reporter dari JSON Server, menggunakan fallback:', err);
         if (!isMounted) return;
 
-        setReports(filterReportsByReporter(MOCK_REPORTER_REPORTS, user));
+        setReports(sortReportsNewestFirst(filterReportsByReporter(MOCK_REPORTER_REPORTS, user)));
         setError(
           err?.message ||
             'Tidak dapat terhubung ke server backend. Menampilkan data cache lokal.'

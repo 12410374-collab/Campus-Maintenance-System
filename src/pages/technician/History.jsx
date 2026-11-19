@@ -16,6 +16,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useTasks } from '../../context/TaskContext';
+import { sortReportsNewestFirst } from '../../utils/dateFormat';
 
 export default function TechnicianHistory() {
   const { completedTasks } = useTasks();
@@ -35,9 +36,9 @@ export default function TechnicianHistory() {
     return Array.from(dates).sort().reverse();
   }, [completedTasks]);
 
-  // Filter calculation
+  // Filter calculation (terurut terbaru di atas berdasarkan tanggal pembuatan laporan)
   const filteredRepairs = useMemo(() => {
-    return completedTasks.filter((item) => {
+    return sortReportsNewestFirst(completedTasks).filter((item) => {
       const query = searchQuery.toLowerCase().trim();
       const matchesSearch =
         !query ||

@@ -12,6 +12,7 @@ import {
   formatWitaDateOnly,
   formatWitaTimestamp,
   parseWitaTimestampMs,
+  sortReportsNewestFirst,
 } from '../utils/dateFormat';
 import {
   getAllReports,
@@ -334,10 +335,11 @@ export function AdminProvider({ children }) {
   }, [allTasks]);
 
   // Derived reports: gabungkan rawReports dengan liveTask hanya bila TaskContext bukan fallback offline saat Admin online
+  // dan urutkan laporan terbaru di bagian paling atas
   const reports = useMemo(() => {
     const allowTaskOverlay = !tasksUsingFallback || isUsingFallback;
 
-    return rawReports.map((report) => {
+    const merged = rawReports.map((report) => {
       if (!allowTaskOverlay) return report;
       const liveTask = taskByReportId.get(report.id.toUpperCase());
       if (!shouldOverlayLiveTask(report, liveTask)) {
@@ -372,6 +374,8 @@ export function AdminProvider({ children }) {
         updates: Array.isArray(liveTask.updates) ? liveTask.updates : report.updates,
       };
     });
+
+    return sortReportsNewestFirst(merged);
   }, [rawReports, taskByReportId, tasksUsingFallback, isUsingFallback]);
 
   // Derived technicians: activeTasks, completedTasks & workHistory dihitung murni dari koleksi reports (anti double-counting)
@@ -1113,12 +1117,12 @@ export function AdminProvider({ children }) {
         prev.map((r) => (r.id === reportId ? normalized : r))
       );
 
-      // Sinkronkan juga ke TaskContext in-memory agar akun Teknisi langsung menerimanya
-      assignTaskFromAdmin(
-        { ...targetReport, adminPriority: effectivePriority },
-        targetTech,
-        adminName
-      );
+      // Sinkronkan juga ke TaskContext in-memory agar akun Teknisi langsung menerimanya tanpa PATCH ganda
+      assignTaskFromAdmin(normalized, targetTech, adminName, {
+        skipApiSync: true,
+        assignmentUpdate,
+        nextUpdates,
+      });
 
       // Perbarui metadata teknisi di backend jika bukan Unavailable
       const nextActiveCount = targetTech.activeTasks + 1;

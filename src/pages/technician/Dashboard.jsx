@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTasks } from '../../context/TaskContext';
+import { compareReportsNewestFirst, parseWitaTimestampMs } from '../../utils/dateFormat';
 
 export default function TechnicianDashboard() {
   const { user } = useAuth();
@@ -35,9 +36,9 @@ export default function TechnicianDashboard() {
     return tasks.find((t) => t.priority === 'Critical' && t.status !== 'Completed');
   }, [tasks]);
 
-  // Derived 5 recent tasks
+  // Derived 5 recent tasks (terurut terbaru di atas)
   const recentTasks = useMemo(() => {
-    return [...tasks].slice(0, 5);
+    return [...tasks].sort(compareReportsNewestFirst).slice(0, 5);
   }, [tasks]);
 
   // Derived recent activity feed from task update history
@@ -61,7 +62,9 @@ export default function TechnicianDashboard() {
         });
       });
     });
-    return list.slice(0, 5);
+    return list
+      .sort((a, b) => parseWitaTimestampMs(b.timestamp) - parseWitaTimestampMs(a.timestamp))
+      .slice(0, 5);
   }, [tasks]);
 
   // Helper for priority badges

@@ -10,7 +10,11 @@ import {
 } from 'react';
 import { useAuth } from './AuthContext';
 import { saveEvidenceImage, getAllEvidenceImages } from '../utils/imageStorage';
-import { formatWitaTimestamp, formatWitaIsoDate } from '../utils/dateFormat';
+import {
+  formatWitaTimestamp,
+  formatWitaIsoDate,
+  sortReportsNewestFirst,
+} from '../utils/dateFormat';
 import {
   getAllReports,
   updateReport as patchReportInApi,
@@ -603,7 +607,10 @@ export function normalizeReportToTask(report, idbPhotos = {}) {
     reporterName: resolvedReporterName,
     description: report.description || '',
     urgencyReason:
-      report.urgencyReason || report.aiSummary || 'Memerlukan penanganan teknisi fasilitas.',
+      report.urgencyReason ||
+      report.aiAnalysis?.urgencyReason ||
+      report.aiSummary ||
+      'Memerlukan penanganan teknisi fasilitas.',
     damagePhoto: hydrateEvidencePhoto(report.damagePhoto, report.id, idbPhotos),
     evidencePhoto: hydrateEvidencePhoto(report.evidencePhoto, report.id, idbPhotos),
     repairNotes: report.repairNotes || '',
@@ -716,9 +723,11 @@ export function TaskProvider({ children }) {
 
     try {
       const backendReports = await getAllReports();
-      const normalizedTasks = backendReports
-        .map((report) => normalizeReportToTask(report, idbPhotos))
-        .filter(Boolean);
+      const normalizedTasks = sortReportsNewestFirst(
+        backendReports
+          .map((report) => normalizeReportToTask(report, idbPhotos))
+          .filter(Boolean)
+      );
 
       setTasks(normalizedTasks);
       setIsUsingFallback(false);
@@ -732,11 +741,13 @@ export function TaskProvider({ children }) {
         'Gagal memuat daftar tugas dari server. Menampilkan data cache lokal.';
       setError(errMsg);
 
-      const fallbackTasks = loadStoredTasks().map((t) => ({
-        ...t,
-        damagePhoto: hydrateEvidencePhoto(t.damagePhoto, t.id, idbPhotos),
-        evidencePhoto: hydrateEvidencePhoto(t.evidencePhoto, t.id, idbPhotos),
-      }));
+      const fallbackTasks = sortReportsNewestFirst(
+        loadStoredTasks().map((t) => ({
+          ...t,
+          damagePhoto: hydrateEvidencePhoto(t.damagePhoto, t.id, idbPhotos),
+          evidencePhoto: hydrateEvidencePhoto(t.evidencePhoto, t.id, idbPhotos),
+        }))
+      );
       setTasks(fallbackTasks);
       setIsUsingFallback(true);
       return { success: false, message: errMsg };
@@ -947,14 +958,25 @@ export function TaskProvider({ children }) {
   };
 
   // Tambahkan atau perbarui tugas hasil penugasan Admin dan sinkronkan ke JSON Server
-  const assignTaskFromAdmin = (report, technician, adminName = 'Admin Sarana & Fasilitas') => {
+  const assignTaskFromAdmin = (
+    report,
+    technician,
+    adminName = 'Admin Sarana & Fasilitas',
+    options = {}
+  ) => {
     if (!report || !technician) return;
+
+    const {
+      skipApiSync = false,
+      assignmentUpdate: providedUpdate = null,
+      nextUpdates: providedUpdates = null,
+    } = options;
 
     const formattedDate = formatWitaTimestamp(new Date());
     const techCategory = CATEGORY_TO_TECH_MAP[report.category] || report.category || 'Infrastructure';
     const finalPriority = report.adminPriority || report.aiUrgency || 'Medium';
 
-    const assignmentUpdate = {
+    const assignmentUpdate = providedUpdate || {
       id: `upd-${Date.now()}`,
       timestamp: formattedDate,
       author: adminName,
@@ -966,73 +988,69 @@ export function TaskProvider({ children }) {
       (t) => t.id.toLowerCase() === report.id.toLowerCase()
     );
 
-    const newTask = {
-      id: report.id,
-      title: report.title,
-      category: techCategory,
-      adminCategory: resolveAdminCategory(report),
-      location: report.location,
-      priority: finalPriority,
-      aiPriority: report.aiUrgency || 'Medium',
-      status: 'Assigned',
-      reportedDate: report.reportedDate,
-      completedDate: null,
-      completionDay: null,
-      duration: '',
-      reporterId: report.reporterId || null,
-      reporterName: report.reporterRole
-        ? `${report.reporterName} (${report.reporterRole})`
-        : report.reporterName,
-      reporterRole: report.reporterRole || '',
-      description: report.description,
-      urgencyReason: report.aiSummary || 'Memerlukan penanganan teknisi fasilitas.',
-      damagePhoto: report.damagePhoto || null,
-      evidencePhoto: null,
-      repairNotes: '',
-      assignedByAdmin: true,
-      sourceReportId: report.id,
-      assignedTechnicianId: technician.id,
-      assignedTechnicianName: technician.name,
-      aiAnalysis: {
+    const priorUpdates = Array.isArray(existingTask?.updates)
+      ? existingTask.updates
+      : Array.isArray(report.updates)
+      ? report.updates
+      : [];
+
+    const nextUpdates = Array.isArray(providedUpdates)
+      ? providedUpdates
+      : [assignmentUpdate, ...priorUpdates];
+
+    const resolvedAiAnalysis = report.aiAnalysis ||
+      existingTask?.aiAnalysis || {
         category: techCategory,
         urgency: report.aiUrgency || 'Medium',
         summary: report.aiSummary || report.description,
         recommendation: `Lakukan pemeriksaan di ${report.location} untuk laporan ${report.id}.`,
-      },
-      updates: [assignmentUpdate],
-    };
+      };
 
-    const nextUpdates =
-      existingTask && existingTask.assignedByAdmin
-        ? [assignmentUpdate, ...(existingTask.updates || [])]
-        : newTask.updates;
+    const updatedTaskRecord = normalizeReportToTask({
+      ...(existingTask || {}),
+      ...report,
+      id: report.id,
+      title: report.title,
+      category: report.category || existingTask?.adminCategory || techCategory,
+      techCategory,
+      location: report.location,
+      adminPriority: finalPriority,
+      priority: finalPriority,
+      aiPriority: report.aiUrgency || existingTask?.aiPriority || 'Medium',
+      status: 'Assigned',
+      reportedDate: report.reportedDate || existingTask?.reportedDate || formattedDate,
+      completedDate: null,
+      completionDay: null,
+      duration: '',
+      assignedByAdmin: true,
+      sourceReportId: report.id,
+      assignedTechnicianId: technician.id,
+      assignedTechnician: technician.name,
+      assignedTechnicianName: technician.name,
+      statusNote: assignmentUpdate.notes,
+      aiAnalysis: resolvedAiAnalysis,
+      updates: nextUpdates,
+    });
 
     setTasks((prevTasks) => {
       const exists = prevTasks.some((t) => t.id.toLowerCase() === report.id.toLowerCase());
-      const nextTasks = exists
-        ? prevTasks.map((t) =>
-            t.id.toLowerCase() === report.id.toLowerCase()
-              ? t.assignedByAdmin
-                ? {
-                    ...t,
-                    status: 'Assigned',
-                    priority: finalPriority,
-                    assignedByAdmin: true,
-                    sourceReportId: report.id,
-                    assignedTechnicianId: technician.id,
-                    assignedTechnicianName: technician.name,
-                    updates: [assignmentUpdate, ...(t.updates || [])],
-                  }
-                : newTask
-              : t
-          )
-        : [newTask, ...prevTasks];
+      const nextTasks = sortReportsNewestFirst(
+        exists
+          ? prevTasks.map((t) =>
+              t.id.toLowerCase() === report.id.toLowerCase() ? updatedTaskRecord : t
+            )
+          : [updatedTaskRecord, ...prevTasks]
+      );
 
       persistTasksToLocalStorage(nextTasks);
       return nextTasks;
     });
 
-    // Persist assignment ke backend collection reports
+    if (skipApiSync) {
+      return;
+    }
+
+    // Persist assignment ke backend collection reports jika belum dipersist oleh pemanggil
     const assignmentPatch = {
       status: 'Assigned',
       adminPriority: finalPriority,
@@ -1064,15 +1082,33 @@ export function TaskProvider({ children }) {
 
   // Filter tugas sesuai akun teknisi yang login (hanya status Assigned/In Progress/Completed milik teknisi bersangkutan)
   const visibleTasks = useMemo(() => {
+    const sorted = sortReportsNewestFirst(tasks);
     if (role !== 'Technician' || !user?.identifier) {
-      return tasks;
+      return sorted;
     }
-    const userTechId = user.identifier.toLowerCase();
-    return tasks.filter((t) => {
+
+    const userTechId = user.identifier.trim().toLowerCase();
+    const userTechName = (user.name || '').trim().toLowerCase();
+
+    return sorted.filter((t) => {
       if (!TECHNICIAN_TASK_STATUSES.has(t.status)) return false;
-      return t.assignedTechnicianId
-        ? t.assignedTechnicianId.toLowerCase() === userTechId
-        : userTechId === 'tech-001';
+
+      const assignedId =
+        typeof t.assignedTechnicianId === 'string'
+          ? t.assignedTechnicianId.trim().toLowerCase()
+          : '';
+
+      if (assignedId) {
+        return assignedId === userTechId;
+      }
+
+      // Kompatibilitas data lama jika hanya nama teknisi yang tersimpan (laporan belum ditugaskan tidak pernah ditampilkan)
+      const assignedName =
+        typeof (t.assignedTechnicianName || t.assignedTechnician) === 'string'
+          ? (t.assignedTechnicianName || t.assignedTechnician).trim().toLowerCase()
+          : '';
+
+      return Boolean(assignedName && userTechName && assignedName === userTechName);
     });
   }, [tasks, role, user]);
 
